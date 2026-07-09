@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   Bell,
@@ -7,6 +10,7 @@ import {
   CircleDollarSign,
   ContactRound,
   Gauge,
+  LogOut,
   Menu,
   Search,
   Settings,
@@ -14,6 +18,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import type { Principal } from "@/lib/auth";
 
 const nav = [
   { label: "Overview", icon: Gauge, active: true },
@@ -26,16 +31,46 @@ const nav = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const [principal, setPrincipal] = useState<Principal | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((session: Principal | null) => setPrincipal(session))
+      .catch(() => setPrincipal(null));
+  }, []);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
+  }
+
+  const companyName = principal?.company_name ?? "Your company";
+  const fullName = principal?.full_name ?? "Forge user";
+  const initials = fullName
+    .split(" ")
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const companyInitials = companyName
+    .split(" ")
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const role = principal?.role.replace("_", " ") ?? "Member";
+
   return (
     <div className="min-h-screen bg-[#f7f8fa]">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white px-4 py-5 lg:block">
         <div className="px-2"><Logo /></div>
         <div className="mt-7 rounded-xl border bg-gray-50 p-3">
           <div className="flex items-center gap-3">
-            <div className="grid size-9 place-items-center rounded-lg bg-orange-100 text-sm font-bold text-orange-700">AH</div>
+            <div className="grid size-9 place-items-center rounded-lg bg-orange-100 text-sm font-bold text-orange-700">{companyInitials}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">Atlas Heating</p>
-              <p className="text-xs text-gray-500">HVAC operations</p>
+              <p className="truncate text-sm font-semibold">{companyName}</p>
+              <p className="text-xs capitalize text-gray-500">{role} workspace</p>
             </div>
             <ChevronDown className="size-4 text-gray-400" />
           </div>
@@ -72,9 +107,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button className="relative grid size-9 place-items-center rounded-full text-gray-500 hover:bg-gray-100"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-1.5 rounded-full bg-orange-500" /></button>
             <div className="h-7 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
-              <div className="grid size-9 place-items-center rounded-full bg-gray-900 text-xs font-semibold text-white">MO</div>
-              <div className="hidden text-sm sm:block"><p className="font-medium leading-4">Moe Owner</p><p className="text-xs text-gray-500">Owner</p></div>
+              <div className="grid size-9 place-items-center rounded-full bg-gray-900 text-xs font-semibold text-white">{initials}</div>
+              <div className="hidden text-sm sm:block"><p className="font-medium leading-4">{fullName}</p><p className="text-xs capitalize text-gray-500">{role}</p></div>
             </div>
+            <button onClick={logout} title="Sign out" aria-label="Sign out" className="grid size-9 place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"><LogOut className="size-4" /></button>
           </div>
         </header>
         <main className="px-4 py-6 sm:px-7 lg:px-8 lg:py-8">{children}</main>

@@ -1,7 +1,13 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from app.core.security import create_token, decode_token, hash_password, verify_password
+from app.core.security import (
+    create_token,
+    decode_token,
+    fingerprint_token,
+    hash_password,
+    verify_password,
+)
 
 
 def test_password_round_trip() -> None:
@@ -24,3 +30,10 @@ def test_access_token_contains_tenant_boundary() -> None:
     assert payload["sub"] == str(user_id)
     assert payload["company_id"] == str(company_id)
     assert payload["type"] == "access"
+
+
+def test_token_fingerprint_is_stable_without_storing_token() -> None:
+    fingerprint = fingerprint_token("sensitive-refresh-token")
+    assert fingerprint == fingerprint_token("sensitive-refresh-token")
+    assert fingerprint != "sensitive-refresh-token"
+    assert len(fingerprint) == 64

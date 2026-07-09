@@ -132,3 +132,15 @@ async def rotate_refresh_token(db: AsyncSession, token: str) -> TokenPair:
     tokens = await _issue_tokens(db, user_id, company_id)
     await db.commit()
     return tokens
+
+
+async def revoke_refresh_token(db: AsyncSession, token: str) -> None:
+    session = await db.scalar(
+        select(RefreshSession).where(
+            RefreshSession.token_fingerprint == fingerprint_token(token),
+            RefreshSession.revoked_at.is_(None),
+        )
+    )
+    if session:
+        session.revoked_at = datetime.now(UTC)
+        await db.commit()

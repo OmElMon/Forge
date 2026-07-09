@@ -23,4 +23,4 @@ docker compose exec api alembic upgrade head
 
 ## Current scope
 
-This first foundation implements the company/user identity boundary, authentication primitives, role-based authorization, tenant-safe data model conventions, health endpoints, background-worker wiring, and the initial operator dashboard shell. Customer, job, scheduling, and technician workflows are the next vertical slices.
+This foundation implements the company/user identity boundary, secure browser sessions, registration and login, rotating refresh tokens, role-based authorization, tenant-safe data model conventions, health endpoints, background-worker wiring, and the initial operator dashboard shell. Customer, job, scheduling, and technician workflows are the next vertical slices.
