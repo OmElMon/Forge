@@ -8,3 +8,5 @@
   PNPM_VERSION = "11.7.0"
   NEXT_TELEMETRY_DISABLED = "1"
 
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

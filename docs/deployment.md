@@ -10,6 +10,7 @@ Netlify should only host the frontend. The API, PostgreSQL, and Redis need to be
 ## Netlify frontend
 
 The repository includes a root `netlify.toml` so Netlify can build the web app from the monorepo automatically.
+It also explicitly enables Netlify's Next.js runtime plugin so App Router routes, middleware, and route handlers deploy correctly.
 
 Use these settings when importing the GitHub repository:
 
@@ -62,4 +63,3 @@ alembic upgrade head
 ```
 
 Once the backend URL is live, set Netlify's `API_INTERNAL_URL`, redeploy the frontend, and login/register will point at the production API.
-
