@@ -4,6 +4,7 @@
   publish = ".next"
 
 [build.environment]
+  API_INTERNAL_URL = "https://crewpilotos.onrender.com/api/v1"
   NODE_VERSION = "22"
   PNPM_VERSION = "11.7.0"
   NEXT_TELEMETRY_DISABLED = "1"
