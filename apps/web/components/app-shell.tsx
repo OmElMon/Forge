@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const companyName = principal?.company_name ?? "Your company";
-  const fullName = principal?.full_name ?? "Forge user";
+  const fullName = principal?.full_name ?? "CrewPilot OS user";
   const initials = fullName
     .split(" ")
     .slice(0, 2)

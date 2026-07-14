@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Forge — Home service operations",
+  title: "CrewPilot OS — Home service operations",
   description: "The operating system for modern home service companies.",
 };
 

@@ -1,6 +1,6 @@
-# Forge
+# CrewPilot OS
 
-Forge is an AI-native operating system for home service businesses. The first market is HVAC, while the domain and tenant boundaries are designed for other field-service verticals.
+CrewPilot OS is an AI-native operating system for home service businesses. The first market is HVAC, while the domain and tenant boundaries are designed for other field-service verticals.
 
 ## Foundation
 

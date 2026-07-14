@@ -6,7 +6,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       <span className="grid size-9 place-items-center rounded-xl bg-ink text-white shadow-sm">
         <Flame className="size-5 text-orange-400" strokeWidth={2.3} />
       </span>
-      {!compact && <span className="text-xl">Forge</span>}
+      {!compact && <span className="text-xl">CrewPilot OS</span>}
     </div>
   );
 }

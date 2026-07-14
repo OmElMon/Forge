@@ -2,7 +2,7 @@
 
 ## Shape
 
-Forge is a modular monolith for the MVP. The web application and API deploy independently, while business modules share one PostgreSQL database and explicit service boundaries. This keeps delivery fast without collapsing the domain into an unstructured codebase. Modules can be extracted later when operational evidence justifies it.
+CrewPilot OS is a modular monolith for the MVP. The web application and API deploy independently, while business modules share one PostgreSQL database and explicit service boundaries. This keeps delivery fast without collapsing the domain into an unstructured codebase. Modules can be extracted later when operational evidence justifies it.
 
 ```mermaid
 flowchart LR

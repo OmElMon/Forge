@@ -43,7 +43,7 @@ export default function RegisterPage() {
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError("Forge could not reach the authentication service.");
+      setError("CrewPilot OS could not reach the authentication service.");
     } finally {
       setSubmitting(false);
     }
@@ -54,7 +54,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-lg rounded-2xl border bg-white p-7 shadow-panel sm:p-10">
         <Logo />
         <p className="mt-10 text-sm font-semibold text-orange-600">Create your workspace</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Bring your operation into Forge</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Bring your operation into CrewPilot OS</h1>
         <p className="mt-2 text-sm text-gray-500">Your first account becomes the company owner.</p>
         <form onSubmit={submit} className="mt-8 grid gap-5 sm:grid-cols-2">
           <label className="block text-sm font-medium sm:col-span-2">Company name<input name="company_name" required minLength={2} className="mt-2 h-11 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Atlas Heating & Cooling" /></label>
@@ -66,7 +66,7 @@ export default function RegisterPage() {
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Create workspace <ArrowRight className="size-4" /></>}
           </button>
         </form>
-        <p className="mt-6 text-center text-sm text-gray-500">Already using Forge? <Link href="/login" className="font-semibold text-orange-600 hover:text-orange-700">Sign in</Link></p>
+        <p className="mt-6 text-center text-sm text-gray-500">Already using CrewPilot OS? <Link href="/login" className="font-semibold text-orange-600 hover:text-orange-700">Sign in</Link></p>
       </div>
     </main>
   );

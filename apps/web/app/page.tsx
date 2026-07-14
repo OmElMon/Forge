@@ -34,7 +34,7 @@ export default function Home() {
             The home-service OS built for serious operators.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-gray-600">
-            Forge brings customer intake, jobs, scheduling, team notes, and eventually AI-assisted workflows into one clean command center for HVAC and home-service companies.
+            CrewPilot OS brings customer intake, jobs, scheduling, team notes, and eventually AI-assisted workflows into one clean command center for HVAC and home-service companies.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link href="/register" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-orange-600 px-6 text-sm font-bold text-white shadow-lg shadow-orange-600/20 hover:bg-orange-700">

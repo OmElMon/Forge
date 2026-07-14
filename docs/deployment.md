@@ -1,6 +1,6 @@
 # Deployment
 
-Forge is split into two deployable services:
+CrewPilot OS is split into two deployable services:
 
 - `apps/web` — the Next.js frontend, deployable to Netlify.
 - `apps/api` — the FastAPI backend, deployable to a Python service host such as Render, Railway, Fly.io, or DigitalOcean App Platform.

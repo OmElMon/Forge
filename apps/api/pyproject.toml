@@ -1,7 +1,7 @@
 [project]
 name = "forge-api"
 version = "0.1.0"
-description = "Forge home services operating system API"
+description = "CrewPilot OS home services operating system API"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.13,<2",

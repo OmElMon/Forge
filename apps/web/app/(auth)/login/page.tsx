@@ -33,7 +33,7 @@ export default function LoginPage() {
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError("Forge could not reach the authentication service.");
+      setError("CrewPilot OS could not reach the authentication service.");
     } finally {
       setSubmitting(false);
     }
@@ -46,7 +46,7 @@ export default function LoginPage() {
           <Logo />
           <div className="mt-14">
             <p className="text-sm font-semibold text-orange-600">Welcome back</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Sign in to Forge</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Sign in to CrewPilot OS</h1>
             <p className="mt-2 text-sm text-gray-500">Run your entire service operation from one place.</p>
           </div>
           <form onSubmit={submit} className="mt-8 space-y-5">
@@ -79,9 +79,9 @@ export default function LoginPage() {
         <p className="relative text-sm font-medium text-orange-400">BUILT FOR THE TRADES</p>
         <div className="relative max-w-xl">
           <blockquote className="text-3xl font-medium leading-tight tracking-tight">“Your team should spend their day serving customers—not wrestling with software.”</blockquote>
-          <p className="mt-5 text-sm text-gray-400">Forge brings the office, field, and customer experience together.</p>
+          <p className="mt-5 text-sm text-gray-400">CrewPilot OS brings the office, field, and customer experience together.</p>
         </div>
-        <p className="relative text-xs text-gray-600">© 2026 Forge</p>
+        <p className="relative text-xs text-gray-600">© 2026 CrewPilot OS</p>
       </section>
     </main>
   );
