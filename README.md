@@ -30,3 +30,7 @@ This foundation implements the company/user identity boundary, secure browser se
 The Next.js frontend is configured for Netlify with `netlify.toml`. The FastAPI backend, PostgreSQL, and Redis should be deployed separately.
 
 See `docs/deployment.md` for the Netlify settings and backend environment variables.
+
+## Workflow
+
+CrewPilot OS ships in small vertical slices. See `docs/workflows.md` for what should be handled manually, what Codex can automate, and how each feature should move from local changes to production validation.

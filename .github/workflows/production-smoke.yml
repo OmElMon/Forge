@@ -1,0 +1,44 @@
+name: Production Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_url:
+        description: Netlify frontend URL
+        required: true
+        default: https://crewpilotos.netlify.app
+      api_url:
+        description: Render API URL
+        required: true
+        default: https://crewpilotos.onrender.com
+      check_readiness:
+        description: Also require /api/v1/ready to pass
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check frontend
+        run: |
+          curl --fail --silent --show-error --location "${{ inputs.frontend_url }}" > /tmp/frontend.html
+          grep -qi "CrewPilot OS" /tmp/frontend.html
+
+      - name: Check API root
+        run: |
+          curl --fail --silent --show-error "${{ inputs.api_url }}/" | grep -qi "CrewPilot OS API"
+
+      - name: Check API health
+        run: |
+          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/health" | grep -q '"ok"'
+
+      - name: Check API readiness
+        if: ${{ inputs.check_readiness }}
+        run: |
+          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/ready" | grep -q '"ready"'
+
