@@ -21,6 +21,7 @@ export type Principal = {
 
 const LOCAL_API_URL = "http://127.0.0.1:8000/api/v1";
 const PRODUCTION_API_URL = "https://crewpilotos.onrender.com/api/v1";
+const PRODUCTION_WEB_HOST = "crewpilotos.netlify.app";
 
 export function apiUrl(path: string) {
   const base =
@@ -31,10 +32,15 @@ export function apiUrl(path: string) {
 }
 
 export function isSameOrigin(request: NextRequest) {
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite === "same-origin" || fetchSite === "none") return true;
+
   const origin = request.headers.get("origin");
   if (!origin) return true;
+
   try {
-    return new URL(origin).host === request.nextUrl.host;
+    const originHost = new URL(origin).host;
+    return originHost === request.nextUrl.host || originHost === PRODUCTION_WEB_HOST;
   } catch {
     return false;
   }
