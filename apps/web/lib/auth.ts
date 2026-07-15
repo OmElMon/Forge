@@ -19,11 +19,14 @@ export type Principal = {
   role: "owner" | "admin" | "dispatcher" | "technician" | "office_staff";
 };
 
+const LOCAL_API_URL = "http://127.0.0.1:8000/api/v1";
+const PRODUCTION_API_URL = "https://crewpilotos.onrender.com/api/v1";
+
 export function apiUrl(path: string) {
   const base =
     process.env.API_INTERNAL_URL ??
     process.env.NEXT_PUBLIC_API_URL ??
-    "http://127.0.0.1:8000/api/v1";
+    (process.env.NODE_ENV === "production" ? PRODUCTION_API_URL : LOCAL_API_URL);
   return `${base.replace(/\/$/, "")}${path}`;
 }
 
@@ -67,4 +70,3 @@ export function clearSessionCookies(response: NextResponse) {
 export function invalidOrigin() {
   return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
 }
-
