@@ -15,6 +15,15 @@ class CustomerCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class CustomerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    email: EmailStr | None = None
+    status: CustomerStatus | None = None
+    source: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
 class CustomerRead(BaseModel):
     id: UUID
     company_id: UUID

@@ -1,20 +1,33 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { LoaderCircle, Mail, Phone, Plus, Search, UserRound } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  CalendarClock,
+  LoaderCircle,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  Search,
+  UserRound,
+} from "lucide-react";
+
+type CustomerStatus = "lead" | "active" | "inactive";
 
 type Customer = {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
-  status: "lead" | "active" | "inactive";
+  status: CustomerStatus;
   source: string | null;
   notes: string | null;
   created_at: string;
+  updated_at: string;
 };
 
-const statusStyles = {
+const statusStyles: Record<CustomerStatus, string> = {
   active: "bg-emerald-50 text-emerald-700",
   inactive: "bg-gray-100 text-gray-600",
   lead: "bg-orange-50 text-orange-700",
@@ -35,32 +48,52 @@ function errorMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== "object") return fallback;
   const error = (payload as { error?: unknown }).error;
   if (typeof error === "string") return error;
-  if (Array.isArray(error)) return error.map((item) => {
-    if (typeof item === "string") return item;
-    if (item && typeof item === "object" && "msg" in item) return String((item as { msg: unknown }).msg);
-    return "Invalid customer field.";
-  }).join(" ");
+  if (Array.isArray(error)) {
+    return error
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) return String((item as { msg: unknown }).msg);
+        return "Invalid customer field.";
+      })
+      .join(" ");
+  }
   return fallback;
+}
+
+function customerPayload(form: FormData) {
+  return {
+    email: form.get("email") || null,
+    name: form.get("name"),
+    notes: form.get("notes") || null,
+    phone: form.get("phone") || null,
+    source: form.get("source") || null,
+    status: form.get("status"),
+  };
 }
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedCustomer = customers.find((customer) => customer.id === selectedId) ?? customers[0] ?? null;
 
   async function loadCustomers() {
     setLoading(true);
     setError("");
     try {
       const response = await fetch("/api/customers", { cache: "no-store" });
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
       if (!response.ok) {
-        setError(payload.error ?? "Unable to load customers.");
+        setError(errorMessage(payload, "Unable to load customers."));
         return;
       }
-      setCustomers(payload as Customer[]);
+      const loaded = payload as Customer[];
+      setCustomers(loaded);
+      setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load customers.");
     } finally {
@@ -87,18 +120,10 @@ export default function CustomersPage() {
     setSaving(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const payload = {
-      email: form.get("email") || null,
-      name: form.get("name"),
-      notes: form.get("notes") || null,
-      phone: form.get("phone") || null,
-      source: form.get("source") || null,
-      status: form.get("status"),
-    };
 
     try {
       const response = await fetch("/api/customers", {
-        body: JSON.stringify(payload),
+        body: JSON.stringify(customerPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -107,8 +132,10 @@ export default function CustomersPage() {
         setError(errorMessage(result, `Unable to create customer. Status ${response.status}.`));
         return;
       }
+      const customer = result as Customer;
       event.currentTarget.reset();
-      setCustomers((current) => [result as Customer, ...current]);
+      setCustomers((current) => [customer, ...current]);
+      setSelectedId(customer.id);
     } catch {
       setError("CrewPilot OS could not save this customer.");
     } finally {
@@ -116,8 +143,37 @@ export default function CustomersPage() {
     }
   }
 
+  async function updateCustomer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCustomer) return;
+
+    setUpdating(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const response = await fetch(`/api/customers/${selectedCustomer.id}`, {
+        body: JSON.stringify(customerPayload(form)),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to update customer. Status ${response.status}.`));
+        return;
+      }
+      const updated = result as Customer;
+      setCustomers((current) => current.map((customer) => (customer.id === updated.id ? updated : customer)));
+      setSelectedId(updated.id);
+    } catch {
+      setError("CrewPilot OS could not update this customer.");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 xl:grid-cols-[1fr_420px]">
+    <div className="mx-auto grid max-w-[1440px] gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <section>
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
@@ -165,80 +221,160 @@ export default function CustomersPage() {
             </div>
           ) : (
             <div className="divide-y">
-              {filteredCustomers.map((customer) => (
-                <article key={customer.id} className="flex flex-col gap-3 px-5 py-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{customer.name}</h3>
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${statusStyles[customer.status]}`}>
-                        {customer.status}
-                      </span>
+              {filteredCustomers.map((customer) => {
+                const isSelected = customer.id === selectedCustomer?.id;
+                return (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => setSelectedId(customer.id)}
+                    className={`flex w-full flex-col gap-3 px-5 py-4 text-left transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between ${isSelected ? "bg-orange-50/60" : ""}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{customer.name}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${statusStyles[customer.status]}`}>
+                          {customer.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                        {customer.phone && <span className="inline-flex items-center gap-1"><Phone className="size-3.5" />{customer.phone}</span>}
+                        {customer.email && <span className="inline-flex items-center gap-1"><Mail className="size-3.5" />{customer.email}</span>}
+                        {customer.source && <span>Source: {customer.source}</span>}
+                      </div>
+                      {customer.notes && <p className="mt-2 max-w-2xl text-sm text-gray-500">{customer.notes}</p>}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                      {customer.phone && <span className="inline-flex items-center gap-1"><Phone className="size-3.5" />{customer.phone}</span>}
-                      {customer.email && <span className="inline-flex items-center gap-1"><Mail className="size-3.5" />{customer.email}</span>}
-                      {customer.source && <span>Source: {customer.source}</span>}
-                    </div>
-                    {customer.notes && <p className="mt-2 max-w-2xl text-sm text-gray-500">{customer.notes}</p>}
-                  </div>
-                  <p className="text-xs text-gray-400">{new Date(customer.created_at).toLocaleDateString()}</p>
-                </article>
-              ))}
+                    <p className="text-xs text-gray-400">{new Date(customer.created_at).toLocaleDateString()}</p>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       </section>
 
-      <aside className="rounded-xl border bg-white p-5 shadow-panel xl:sticky xl:top-24 xl:self-start">
-        <div className="flex items-center gap-2">
-          <span className="grid size-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
-            <Plus className="size-5" />
-          </span>
-          <div>
-            <h2 className="font-semibold">Add customer</h2>
-            <p className="text-xs text-gray-500">Create the first CRM records.</p>
-          </div>
-        </div>
+      <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+        {selectedCustomer && (
+          <section className="rounded-xl border bg-white p-5 shadow-panel">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">Customer profile</p>
+                <h2 className="mt-1 text-xl font-semibold">{selectedCustomer.name}</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  Updated {new Date(selectedCustomer.updated_at).toLocaleDateString()}
+                </p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${statusStyles[selectedCustomer.status]}`}>
+                {selectedCustomer.status}
+              </span>
+            </div>
 
-        <form onSubmit={createCustomer} className="mt-5 space-y-4">
-          <label className="block text-sm font-medium">
-            Customer name
-            <input name="name" required minLength={2} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Marianne Foster" />
-          </label>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <label className="block text-sm font-medium">
-              Phone
-              <input name="phone" className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="(555) 123-4567" />
-            </label>
-            <label className="block text-sm font-medium">
-              Email
-              <input name="email" type="email" className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="customer@example.com" />
-            </label>
+            <div className="mt-5 grid gap-3 text-sm text-gray-600">
+              <p className="inline-flex items-center gap-2">
+                <Phone className="size-4 text-gray-400" />
+                {selectedCustomer.phone || "No phone on file"}
+              </p>
+              <p className="inline-flex items-center gap-2">
+                <Mail className="size-4 text-gray-400" />
+                {selectedCustomer.email || "No email on file"}
+              </p>
+              <p className="inline-flex items-center gap-2">
+                <MapPin className="size-4 text-gray-400" />
+                {selectedCustomer.source ? `Source: ${selectedCustomer.source}` : "No lead source yet"}
+              </p>
+            </div>
+
+            <div className="mt-5 rounded-lg bg-gray-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</p>
+              <p className="mt-2 text-sm text-gray-600">{selectedCustomer.notes || "No notes yet."}</p>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-lg border p-4">
+                <BriefcaseBusiness className="size-5 text-orange-600" />
+                <p className="mt-3 text-sm font-semibold">Jobs & estimates</p>
+                <p className="mt-1 text-xs text-gray-500">Coming next: link jobs, estimates, and invoices to this customer.</p>
+              </div>
+              <div className="rounded-lg border p-4">
+                <CalendarClock className="size-5 text-orange-600" />
+                <p className="mt-3 text-sm font-semibold">Timeline</p>
+                <p className="mt-1 text-xs text-gray-500">First touch created {new Date(selectedCustomer.created_at).toLocaleDateString()}.</p>
+              </div>
+            </div>
+
+            <form key={selectedCustomer.id} onSubmit={updateCustomer} className="mt-5 space-y-4 border-t pt-5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Edit customer</h3>
+                <p className="text-xs text-gray-500">Changes save to CRM</p>
+              </div>
+              <CustomerFields customer={selectedCustomer} />
+              <button disabled={updating} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-950 text-sm font-semibold text-white shadow-sm hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+                {updating ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                Save changes
+              </button>
+            </form>
+          </section>
+        )}
+
+        <section className="rounded-xl border bg-white p-5 shadow-panel">
+          <div className="flex items-center gap-2">
+            <span className="grid size-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
+              <Plus className="size-5" />
+            </span>
+            <div>
+              <h2 className="font-semibold">Add customer</h2>
+              <p className="text-xs text-gray-500">Create another CRM record.</p>
+            </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <label className="block text-sm font-medium">
-              Status
-              <select name="status" defaultValue="lead" className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                <option value="lead">Lead</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </label>
-            <label className="block text-sm font-medium">
-              Source
-              <input name="source" className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Referral, Google, phone call" />
-            </label>
-          </div>
-          <label className="block text-sm font-medium">
-            Notes
-            <textarea name="notes" rows={4} className="mt-2 w-full rounded-lg border px-3 py-2 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Gate code, preferred technician, equipment notes…" />
-          </label>
-          <button disabled={saving} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
-            {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            Save customer
-          </button>
-        </form>
+
+          <form onSubmit={createCustomer} className="mt-5 space-y-4">
+            <CustomerFields />
+            <button disabled={saving} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
+              {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Save customer
+            </button>
+          </form>
+        </section>
       </aside>
     </div>
+  );
+}
+
+function CustomerFields({ customer }: { customer?: Customer }) {
+  return (
+    <>
+      <label className="block text-sm font-medium">
+        Customer name
+        <input name="name" required minLength={2} defaultValue={customer?.name ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Marianne Foster" />
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <label className="block text-sm font-medium">
+          Phone
+          <input name="phone" defaultValue={customer?.phone ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="(555) 123-4567" />
+        </label>
+        <label className="block text-sm font-medium">
+          Email
+          <input name="email" type="email" defaultValue={customer?.email ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="customer@example.com" />
+        </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <label className="block text-sm font-medium">
+          Status
+          <select name="status" defaultValue={customer?.status ?? "lead"} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+            <option value="lead">Lead</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+        <label className="block text-sm font-medium">
+          Source
+          <input name="source" defaultValue={customer?.source ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Referral, Google, phone call" />
+        </label>
+      </div>
+      <label className="block text-sm font-medium">
+        Notes
+        <textarea name="notes" rows={4} defaultValue={customer?.notes ?? ""} className="mt-2 w-full rounded-lg border px-3 py-2 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Gate code, preferred technician, equipment notes…" />
+      </label>
+    </>
   );
 }
