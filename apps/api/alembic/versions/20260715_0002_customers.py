@@ -12,7 +12,9 @@ down_revision: str | None = "20260630_0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-customer_status = postgresql.ENUM("lead", "active", "inactive", name="customer_status")
+customer_status = postgresql.ENUM(
+    "lead", "active", "inactive", name="customer_status", create_type=False
+)
 
 
 def upgrade() -> None:
