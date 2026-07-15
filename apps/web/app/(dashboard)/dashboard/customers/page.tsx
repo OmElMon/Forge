@@ -20,6 +20,29 @@ const statusStyles = {
   lead: "bg-orange-50 text-orange-700",
 };
 
+async function readApiResponse(response: Response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { error: text };
+  }
+}
+
+function errorMessage(payload: unknown, fallback: string) {
+  if (!payload || typeof payload !== "object") return fallback;
+  const error = (payload as { error?: unknown }).error;
+  if (typeof error === "string") return error;
+  if (Array.isArray(error)) return error.map((item) => {
+    if (typeof item === "string") return item;
+    if (item && typeof item === "object" && "msg" in item) return String((item as { msg: unknown }).msg);
+    return "Invalid customer field.";
+  }).join(" ");
+  return fallback;
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,9 +102,9 @@ export default function CustomersPage() {
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok) {
-        setError(result.error ?? "Unable to create customer.");
+        setError(errorMessage(result, `Unable to create customer. Status ${response.status}.`));
         return;
       }
       event.currentTarget.reset();
