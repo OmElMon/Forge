@@ -62,4 +62,6 @@ Run Alembic migrations after provisioning the database:
 alembic upgrade head
 ```
 
+The API Docker image runs migrations automatically on container startup before launching Uvicorn.
+
 Once the backend URL is live, set Netlify's `API_INTERNAL_URL`, redeploy the frontend, and login/register will point at the production API.
