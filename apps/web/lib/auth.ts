@@ -32,7 +32,12 @@ export function apiUrl(path: string) {
 
 export function isSameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
-  return !origin || origin === request.nextUrl.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.nextUrl.host;
+  } catch {
+    return false;
+  }
 }
 
 export async function apiError(response: Response) {
