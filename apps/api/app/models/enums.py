@@ -12,3 +12,9 @@ class UserRole(StrEnum):
 class CompanyStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
+
+
+class CustomerStatus(StrEnum):
+    LEAD = "lead"
+    ACTIVE = "active"
+    INACTIVE = "inactive"

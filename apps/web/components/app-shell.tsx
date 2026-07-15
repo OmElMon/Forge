@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Bell,
@@ -21,17 +23,18 @@ import { Logo } from "@/components/logo";
 import type { Principal } from "@/lib/auth";
 
 const nav = [
-  { label: "Overview", icon: Gauge, active: true },
-  { label: "Customers", icon: ContactRound },
-  { label: "Jobs", icon: BriefcaseBusiness },
-  { label: "Schedule", icon: CalendarDays },
-  { label: "Technicians", icon: Wrench },
-  { label: "Invoices", icon: CircleDollarSign },
-  { label: "Analytics", icon: BarChart3 },
+  { label: "Overview", icon: Gauge, href: "/dashboard" },
+  { label: "Customers", icon: ContactRound, href: "/dashboard/customers" },
+  { label: "Jobs", icon: BriefcaseBusiness, href: "/dashboard/jobs" },
+  { label: "Schedule", icon: CalendarDays, href: "/dashboard/schedule" },
+  { label: "Technicians", icon: Wrench, href: "/dashboard/technicians" },
+  { label: "Invoices", icon: CircleDollarSign, href: "/dashboard/invoices" },
+  { label: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [principal, setPrincipal] = useState<Principal | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
@@ -76,18 +79,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="mt-6 space-y-1">
-          {nav.map((item) => (
-            <a
-              key={item.label}
-              href="#"
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                item.active ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              }`}
-            >
-              <item.icon className="size-[18px]" />
-              {item.label}
-            </a>
-          ))}
+          {nav.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                  active ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                }`}
+              >
+                <item.icon className="size-[18px]" />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
         <div className="absolute inset-x-4 bottom-5 border-t pt-4">
           <a href="#" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100">
