@@ -18,3 +18,11 @@ class CustomerStatus(StrEnum):
     LEAD = "lead"
     ACTIVE = "active"
     INACTIVE = "inactive"
+
+
+class JobStatus(StrEnum):
+    NEW = "new"
+    SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELED = "canceled"

@@ -27,10 +27,28 @@ type Customer = {
   updated_at: string;
 };
 
+type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
+
+type Job = {
+  id: string;
+  customer_id: string;
+  title: string;
+  status: JobStatus;
+  scheduled_start: string | null;
+};
+
 const statusStyles: Record<CustomerStatus, string> = {
   active: "bg-emerald-50 text-emerald-700",
   inactive: "bg-gray-100 text-gray-600",
   lead: "bg-orange-50 text-orange-700",
+};
+
+const jobStatusLabels: Record<JobStatus, string> = {
+  canceled: "Canceled",
+  completed: "Completed",
+  in_progress: "In progress",
+  new: "New",
+  scheduled: "Scheduled",
 };
 
 async function readApiResponse(response: Response) {
@@ -73,6 +91,7 @@ function customerPayload(form: FormData) {
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -80,19 +99,31 @@ export default function CustomersPage() {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedCustomer = customers.find((customer) => customer.id === selectedId) ?? customers[0] ?? null;
+  const selectedCustomerJobs = selectedCustomer
+    ? jobs.filter((job) => job.customer_id === selectedCustomer.id).slice(0, 3)
+    : [];
 
   async function loadCustomers() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/customers", { cache: "no-store" });
-      const payload = await readApiResponse(response);
-      if (!response.ok) {
-        setError(errorMessage(payload, "Unable to load customers."));
+      const [customersResponse, jobsResponse] = await Promise.all([
+        fetch("/api/customers", { cache: "no-store" }),
+        fetch("/api/jobs", { cache: "no-store" }),
+      ]);
+      const customersPayload = await readApiResponse(customersResponse);
+      const jobsPayload = await readApiResponse(jobsResponse);
+      if (!customersResponse.ok) {
+        setError(errorMessage(customersPayload, "Unable to load customers."));
         return;
       }
-      const loaded = payload as Customer[];
+      if (!jobsResponse.ok) {
+        setError(errorMessage(jobsPayload, "Unable to load jobs."));
+        return;
+      }
+      const loaded = customersPayload as Customer[];
       setCustomers(loaded);
+      setJobs(jobsPayload as Job[]);
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load customers.");
@@ -293,13 +324,41 @@ export default function CustomersPage() {
               <div className="rounded-lg border p-4">
                 <BriefcaseBusiness className="size-5 text-orange-600" />
                 <p className="mt-3 text-sm font-semibold">Jobs & estimates</p>
-                <p className="mt-1 text-xs text-gray-500">Coming next: link jobs, estimates, and invoices to this customer.</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {selectedCustomerJobs.length} linked job{selectedCustomerJobs.length === 1 ? "" : "s"} so far.
+                </p>
               </div>
               <div className="rounded-lg border p-4">
                 <CalendarClock className="size-5 text-orange-600" />
                 <p className="mt-3 text-sm font-semibold">Timeline</p>
                 <p className="mt-1 text-xs text-gray-500">First touch created {new Date(selectedCustomer.created_at).toLocaleDateString()}.</p>
               </div>
+            </div>
+
+            <div className="mt-5 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">Recent jobs</p>
+                <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">Open jobs</a>
+              </div>
+              {selectedCustomerJobs.length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No jobs linked to this customer yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {selectedCustomerJobs.map((job) => (
+                    <div key={job.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{job.title}</p>
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-gray-600">
+                          {jobStatusLabels[job.status]}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : "Not scheduled"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <form key={selectedCustomer.id} onSubmit={updateCustomer} className="mt-5 space-y-4 border-t pt-5">
