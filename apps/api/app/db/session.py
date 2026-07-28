@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -5,8 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 
+INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
 
 def normalize_database_url(database_url: str) -> str:
+    if INVALID_PERCENT_ENCODING.search(database_url):
+        raise ValueError(
+            "DATABASE_URL contains an unescaped percent sign. "
+            "Use an alphanumeric database password, or URL-encode special characters."
+        )
+
     if "pooler.supabase.com" not in database_url or "prepared_statement_cache_size" in database_url:
         return database_url
 
