@@ -55,7 +55,9 @@ async def list_jobs(
     query = select(Job).where(Job.company_id == principal.company_id)
     if customer_id is not None:
         query = query.where(Job.customer_id == customer_id)
-    result = await db.execute(query.order_by(Job.scheduled_start.asc().nullslast(), Job.created_at.desc()))
+    result = await db.execute(
+        query.order_by(Job.scheduled_start.asc().nullslast(), Job.created_at.desc())
+    )
     return list(result.scalars().all())
 
 
