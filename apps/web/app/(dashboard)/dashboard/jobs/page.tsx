@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   CalendarClock,
   CheckCircle2,
+  CircleDollarSign,
   Clock3,
   LoaderCircle,
   Plus,
@@ -40,6 +41,7 @@ type Job = {
   title: string;
   status: JobStatus;
   scheduled_start: string | null;
+  amount_cents: number;
   technician_name: string | null;
   notes: string | null;
   created_at: string;
@@ -111,6 +113,7 @@ function jobPayload(form: FormData) {
   const scheduledStart = form.get("scheduled_start");
   const technicianId = form.get("technician_id");
   return {
+    amount_cents: centsFromInput(form.get("amount")),
     customer_id: form.get("customer_id"),
     notes: form.get("notes") || null,
     scheduled_start: scheduledStart ? new Date(String(scheduledStart)).toISOString() : null,
@@ -119,6 +122,19 @@ function jobPayload(form: FormData) {
     technician_name: form.get("technician_name") || null,
     title: form.get("title"),
   };
+}
+
+function centsFromInput(value: FormDataEntryValue | null) {
+  const parsed = Number.parseFloat(String(value ?? "0"));
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 100);
+}
+
+function formatMoney(cents: number) {
+  return new Intl.NumberFormat(undefined, {
+    currency: "USD",
+    style: "currency",
+  }).format(cents / 100);
 }
 
 function formatSchedule(value: string | null) {
@@ -316,7 +332,7 @@ export default function JobsPage() {
     try {
       const response = await fetch("/api/invoices", {
         body: JSON.stringify({
-          amount_cents: 0,
+          amount_cents: job.amount_cents,
           customer_id: job.customer_id,
           document_type: "invoice",
           due_at: null,
@@ -325,7 +341,7 @@ export default function JobsPage() {
             `Customer: ${customer?.name ?? "Unknown customer"}`,
             job.scheduled_start ? `Scheduled: ${formatSchedule(job.scheduled_start)}` : null,
             job.notes ? `Job notes: ${job.notes}` : null,
-            "Add final labor/material pricing before sending.",
+            job.amount_cents > 0 ? `Job amount: ${formatMoney(job.amount_cents)}` : "Add final labor/material pricing before sending.",
           ]
             .filter(Boolean)
             .join("\n"),
@@ -478,6 +494,7 @@ export default function JobsPage() {
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                         <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{customer?.name ?? "Unknown customer"}</span>
                         <span className="inline-flex items-center gap-1"><CalendarClock className="size-3.5" />{formatSchedule(job.scheduled_start)}</span>
+                        <span className="inline-flex items-center gap-1"><CircleDollarSign className="size-3.5" />{formatMoney(job.amount_cents)}</span>
                         {(technician?.name || job.technician_name) && <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{technician?.name ?? job.technician_name}</span>}
                       </div>
                       {job.notes && <p className="mt-2 max-w-2xl text-sm text-gray-500">{job.notes}</p>}
@@ -515,6 +532,10 @@ export default function JobsPage() {
               <p className="inline-flex items-center gap-2">
                 <Wrench className="size-4 text-gray-400" />
                 {(selectedJob.technician_id ? technicianById.get(selectedJob.technician_id)?.name : null) || selectedJob.technician_name || "No technician assigned yet"}
+              </p>
+              <p className="inline-flex items-center gap-2">
+                <CircleDollarSign className="size-4 text-gray-400" />
+                {formatMoney(selectedJob.amount_cents)}
               </p>
               <p>{selectedJob.notes || "No job notes yet."}</p>
             </div>
@@ -669,6 +690,10 @@ function JobFields({ customers, technicians, job }: { customers: Customer[]; tec
           <input name="scheduled_start" type="datetime-local" defaultValue={dateTimeInputValue(job?.scheduled_start ?? null)} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
         </label>
       </div>
+      <label className="block text-sm font-medium">
+        Job amount
+        <input name="amount" type="number" min="0" step="0.01" defaultValue={job ? (job.amount_cents / 100).toFixed(2) : ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="426.00" />
+      </label>
       <label className="block text-sm font-medium">
         Technician
         <select name="technician_id" defaultValue={job?.technician_id ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">

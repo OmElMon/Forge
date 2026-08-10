@@ -12,6 +12,7 @@ class JobCreate(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     status: JobStatus = JobStatus.NEW
     scheduled_start: datetime | None = None
+    amount_cents: int = Field(default=0, ge=0, le=100_000_000)
     technician_name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=4000)
 
@@ -22,6 +23,7 @@ class JobUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=160)
     status: JobStatus | None = None
     scheduled_start: datetime | None = None
+    amount_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     technician_name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=4000)
 
@@ -34,6 +36,7 @@ class JobRead(BaseModel):
     title: str
     status: JobStatus
     scheduled_start: datetime | None
+    amount_cents: int
     technician_name: str | None
     notes: str | None
     created_at: datetime

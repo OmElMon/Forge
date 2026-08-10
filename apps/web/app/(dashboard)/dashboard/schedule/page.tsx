@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
   CalendarDays,
+  CircleDollarSign,
   Clock3,
   LoaderCircle,
   ReceiptText,
@@ -38,6 +39,7 @@ type Job = {
   title: string;
   status: JobStatus;
   scheduled_start: string | null;
+  amount_cents: number;
   technician_name: string | null;
   notes: string | null;
 };
@@ -122,6 +124,13 @@ function formatTime(value: string | null) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatMoney(cents: number) {
+  return new Intl.NumberFormat(undefined, {
+    currency: "USD",
+    style: "currency",
+  }).format(cents / 100);
 }
 
 function formatDay(value: string) {
@@ -225,7 +234,7 @@ export default function SchedulePage() {
     try {
       const response = await fetch("/api/invoices", {
         body: JSON.stringify({
-          amount_cents: 0,
+          amount_cents: job.amount_cents,
           customer_id: job.customer_id,
           document_type: "invoice",
           due_at: null,
@@ -234,7 +243,7 @@ export default function SchedulePage() {
             `Customer: ${customer?.name ?? "Unknown customer"}`,
             job.scheduled_start ? `Scheduled: ${formatTime(job.scheduled_start)}` : null,
             job.notes ? `Job notes: ${job.notes}` : null,
-            "Add final labor/material pricing before sending.",
+            job.amount_cents > 0 ? `Job amount: ${formatMoney(job.amount_cents)}` : "Add final labor/material pricing before sending.",
           ]
             .filter(Boolean)
             .join("\n"),
@@ -423,6 +432,7 @@ export default function SchedulePage() {
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                               <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{customer?.name ?? "Unknown customer"}</span>
                               <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{technicianName || "Unassigned"}</span>
+                              <span className="inline-flex items-center gap-1"><CircleDollarSign className="size-3.5" />{formatMoney(job.amount_cents)}</span>
                               {technician && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${technicianStatusStyles[technician.status]}`}>{technicianStatusLabels[technician.status]}</span>}
                             </div>
                             {technician?.skills.length ? (
