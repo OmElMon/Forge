@@ -1,12 +1,18 @@
 import re
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
+from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
 
 INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+
+def is_supabase_pooler_url(database_url: str) -> bool:
+    return "pooler.supabase.com" in database_url
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -16,16 +22,34 @@ def normalize_database_url(database_url: str) -> str:
             "Use an alphanumeric database password, or URL-encode special characters."
         )
 
-    if "pooler.supabase.com" not in database_url or "prepared_statement_cache_size" in database_url:
+    if not is_supabase_pooler_url(database_url):
         return database_url
 
     parts = urlsplit(database_url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query["prepared_statement_cache_size"] = "0"
+    query.setdefault("prepared_statement_cache_size", "0")
+    query.setdefault("statement_cache_size", "0")
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-engine = create_async_engine(normalize_database_url(settings.database_url), pool_pre_ping=True)
+def database_engine_options(database_url: str) -> dict[str, object]:
+    if not is_supabase_pooler_url(database_url):
+        return {}
+
+    return {
+        "connect_args": {
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+            "statement_cache_size": 0,
+        },
+        "poolclass": pool.NullPool,
+    }
+
+
+engine = create_async_engine(
+    normalize_database_url(settings.database_url),
+    pool_pre_ping=True,
+    **database_engine_options(settings.database_url),
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
 

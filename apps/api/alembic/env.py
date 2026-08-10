@@ -8,7 +8,7 @@ from alembic import context
 from app import models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import normalize_database_url
+from app.db.session import database_engine_options, normalize_database_url
 
 config = context.config
 config.set_main_option(
@@ -43,6 +43,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=database_engine_options(settings.database_url).get("connect_args"),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
