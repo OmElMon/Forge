@@ -59,6 +59,24 @@ const statusLabels: Record<JobStatus, string> = {
   scheduled: "Scheduled",
 };
 
+const workflowActions: Record<JobStatus, { label: string; status: JobStatus; tone?: "primary" | "danger" }[]> = {
+  canceled: [{ label: "Reopen", status: "new" }],
+  completed: [{ label: "Reopen", status: "in_progress" }],
+  in_progress: [
+    { label: "Complete job", status: "completed", tone: "primary" },
+    { label: "Move back", status: "scheduled" },
+  ],
+  new: [
+    { label: "Mark scheduled", status: "scheduled", tone: "primary" },
+    { label: "Cancel", status: "canceled", tone: "danger" },
+  ],
+  scheduled: [
+    { label: "Start job", status: "in_progress", tone: "primary" },
+    { label: "Complete", status: "completed" },
+    { label: "Cancel", status: "canceled", tone: "danger" },
+  ],
+};
+
 async function readApiResponse(response: Response) {
   const text = await response.text();
   if (!text) return null;
@@ -122,6 +140,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -255,6 +274,31 @@ export default function JobsPage() {
     }
   }
 
+  async function updateJobStatus(job: Job, status: JobStatus) {
+    setWorkflowUpdatingId(job.id);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/jobs/${job.id}`, {
+        body: JSON.stringify({ status }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to move job. Status ${response.status}.`));
+        return;
+      }
+      const updated = result as Job;
+      setJobs((current) => current.map((currentJob) => (currentJob.id === updated.id ? updated : currentJob)));
+      setSelectedId(updated.id);
+    } catch {
+      setError("CrewPilot OS could not move this job.");
+    } finally {
+      setWorkflowUpdatingId(null);
+    }
+  }
+
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <section>
@@ -382,6 +426,20 @@ export default function JobsPage() {
               <p>{selectedJob.notes || "No job notes yet."}</p>
             </div>
 
+            <div className="mt-5 border-t pt-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Workflow actions</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">Move this job through the service lifecycle.</p>
+                </div>
+              </div>
+              <WorkflowActions
+                currentStatus={selectedJob.status}
+                disabled={workflowUpdatingId === selectedJob.id}
+                onMove={(status) => updateJobStatus(selectedJob, status)}
+              />
+            </div>
+
             <form key={selectedJob.id} onSubmit={updateJob} className="mt-5 space-y-4 border-t pt-5">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">Edit job</h3>
@@ -428,6 +486,39 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof BriefcaseBusine
         <Icon className="size-5 text-orange-600" />
       </div>
       <p className="mt-3 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function WorkflowActions({
+  currentStatus,
+  disabled,
+  onMove,
+}: {
+  currentStatus: JobStatus;
+  disabled: boolean;
+  onMove: (status: JobStatus) => void;
+}) {
+  const actions = workflowActions[currentStatus];
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      {actions.map((action) => (
+        <button
+          key={`${currentStatus}-${action.status}`}
+          type="button"
+          disabled={disabled}
+          onClick={() => onMove(action.status)}
+          className={`rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            action.tone === "primary"
+              ? "bg-orange-600 text-white hover:bg-orange-700"
+              : action.tone === "danger"
+                ? "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          {disabled ? "Saving…" : action.label}
+        </button>
+      ))}
     </div>
   );
 }

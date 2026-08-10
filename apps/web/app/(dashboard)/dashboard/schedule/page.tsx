@@ -57,6 +57,24 @@ const statusLabels: Record<JobStatus, string> = {
   scheduled: "Scheduled",
 };
 
+const workflowActions: Record<JobStatus, { label: string; status: JobStatus; tone?: "primary" | "danger" }[]> = {
+  canceled: [{ label: "Reopen", status: "new" }],
+  completed: [{ label: "Reopen", status: "in_progress" }],
+  in_progress: [
+    { label: "Complete job", status: "completed", tone: "primary" },
+    { label: "Move back", status: "scheduled" },
+  ],
+  new: [
+    { label: "Mark scheduled", status: "scheduled", tone: "primary" },
+    { label: "Cancel", status: "canceled", tone: "danger" },
+  ],
+  scheduled: [
+    { label: "Start job", status: "in_progress", tone: "primary" },
+    { label: "Complete", status: "completed" },
+    { label: "Cancel", status: "canceled", tone: "danger" },
+  ],
+};
+
 const technicianStatusStyles: Record<TechnicianStatus, string> = {
   available: "bg-emerald-50 text-emerald-700",
   off_today: "bg-gray-100 text-gray-700",
@@ -117,6 +135,7 @@ export default function SchedulePage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
 
@@ -166,6 +185,30 @@ export default function SchedulePage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  async function updateJobStatus(job: Job, status: JobStatus) {
+    setWorkflowUpdatingId(job.id);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/jobs/${job.id}`, {
+        body: JSON.stringify({ status }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to move job. Status ${response.status}.`));
+        return;
+      }
+      const updated = result as Job;
+      setJobs((current) => current.map((currentJob) => (currentJob.id === updated.id ? updated : currentJob)));
+    } catch {
+      setError("CrewPilot OS could not move this job.");
+    } finally {
+      setWorkflowUpdatingId(null);
+    }
+  }
 
   const scheduledJobs = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -300,9 +343,16 @@ export default function SchedulePage() {
                             ) : null}
                             {job.notes && <p className="mt-2 text-sm text-gray-500">{job.notes}</p>}
                           </div>
-                          <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">
-                            Edit job
-                          </a>
+                          <div className="flex flex-col gap-2 sm:items-end">
+                            <WorkflowActions
+                              currentStatus={job.status}
+                              disabled={workflowUpdatingId === job.id}
+                              onMove={(status) => updateJobStatus(job, status)}
+                            />
+                            <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">
+                              Edit job
+                            </a>
+                          </div>
                         </div>
                       );
                     })}
@@ -399,6 +449,39 @@ function HealthRow({ label, value, warning = false }: { label: string; value: nu
     <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
       <p className="text-sm text-gray-600">{label}</p>
       <span className={`text-sm font-semibold ${warning ? "text-orange-700" : "text-gray-900"}`}>{value}</span>
+    </div>
+  );
+}
+
+function WorkflowActions({
+  currentStatus,
+  disabled,
+  onMove,
+}: {
+  currentStatus: JobStatus;
+  disabled: boolean;
+  onMove: (status: JobStatus) => void;
+}) {
+  const actions = workflowActions[currentStatus];
+  return (
+    <div className="flex flex-wrap gap-2 sm:justify-end">
+      {actions.slice(0, 2).map((action) => (
+        <button
+          key={`${currentStatus}-${action.status}`}
+          type="button"
+          disabled={disabled}
+          onClick={() => onMove(action.status)}
+          className={`rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            action.tone === "primary"
+              ? "bg-orange-600 text-white hover:bg-orange-700"
+              : action.tone === "danger"
+                ? "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          {disabled ? "Saving…" : action.label}
+        </button>
+      ))}
     </div>
   );
 }
