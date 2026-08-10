@@ -1,7 +1,19 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, Plus, Search, UserRound, Wrench } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  LoaderCircle,
+  Mail,
+  Phone,
+  Plus,
+  Search,
+  UserRound,
+  Wrench,
+} from "lucide-react";
 
 type TechnicianStatus = "available" | "on_job" | "off_today";
 
@@ -18,6 +30,26 @@ type Technician = {
   updated_at: string;
 };
 
+type Customer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+};
+
+type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
+
+type Job = {
+  id: string;
+  customer_id: string;
+  technician_id: string | null;
+  title: string;
+  status: JobStatus;
+  scheduled_start: string | null;
+  technician_name: string | null;
+  notes: string | null;
+};
+
 const statusStyles: Record<TechnicianStatus, string> = {
   available: "bg-emerald-50 text-emerald-700",
   off_today: "bg-gray-100 text-gray-700",
@@ -28,6 +60,22 @@ const statusLabels: Record<TechnicianStatus, string> = {
   available: "Available",
   off_today: "Off today",
   on_job: "On job",
+};
+
+const jobStatusStyles: Record<JobStatus, string> = {
+  canceled: "bg-rose-50 text-rose-700",
+  completed: "bg-emerald-50 text-emerald-700",
+  in_progress: "bg-blue-50 text-blue-700",
+  new: "bg-orange-50 text-orange-700",
+  scheduled: "bg-violet-50 text-violet-700",
+};
+
+const jobStatusLabels: Record<JobStatus, string> = {
+  canceled: "Canceled",
+  completed: "Completed",
+  in_progress: "In progress",
+  new: "New",
+  scheduled: "Scheduled",
 };
 
 async function readApiResponse(response: Response) {
@@ -76,8 +124,19 @@ function technicianPayload(form: FormData) {
   };
 }
 
+function formatSchedule(value: string | null) {
+  if (!value) return "Unscheduled";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -86,18 +145,39 @@ export default function TechniciansPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedTechnician = technicians.find((technician) => technician.id === selectedId) ?? technicians[0] ?? null;
 
-  async function loadTechnicians() {
+  const customerById = useMemo(
+    () => new Map(customers.map((customer) => [customer.id, customer])),
+    [customers],
+  );
+
+  async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/technicians", { cache: "no-store" });
-      const payload = await readApiResponse(response);
-      if (!response.ok) {
-        setError(errorMessage(payload, "Unable to load technicians."));
+      const [techniciansResponse, customersResponse, jobsResponse] = await Promise.all([
+        fetch("/api/technicians", { cache: "no-store" }),
+        fetch("/api/customers", { cache: "no-store" }),
+        fetch("/api/jobs", { cache: "no-store" }),
+      ]);
+      const techniciansPayload = await readApiResponse(techniciansResponse);
+      const customersPayload = await readApiResponse(customersResponse);
+      const jobsPayload = await readApiResponse(jobsResponse);
+      if (!techniciansResponse.ok) {
+        setError(errorMessage(techniciansPayload, "Unable to load technicians."));
         return;
       }
-      const loaded = payload as Technician[];
+      if (!customersResponse.ok) {
+        setError(errorMessage(customersPayload, "Unable to load customers."));
+        return;
+      }
+      if (!jobsResponse.ok) {
+        setError(errorMessage(jobsPayload, "Unable to load jobs."));
+        return;
+      }
+      const loaded = techniciansPayload as Technician[];
       setTechnicians(loaded);
+      setCustomers(customersPayload as Customer[]);
+      setJobs(jobsPayload as Job[]);
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load technicians.");
@@ -107,7 +187,7 @@ export default function TechniciansPage() {
   }
 
   useEffect(() => {
-    void loadTechnicians();
+    void loadData();
   }, []);
 
   const filteredTechnicians = useMemo(() => {
@@ -129,6 +209,22 @@ export default function TechniciansPage() {
       { available: 0, off_today: 0, on_job: 0 } as Record<TechnicianStatus, number>,
     );
   }, [technicians]);
+
+  const selectedJobs = useMemo(() => {
+    if (!selectedTechnician) return [];
+    return jobs
+      .filter((job) => job.technician_id === selectedTechnician.id || (!job.technician_id && job.technician_name === selectedTechnician.name))
+      .sort((a, b) => {
+        if (!a.scheduled_start && !b.scheduled_start) return a.title.localeCompare(b.title);
+        if (!a.scheduled_start) return 1;
+        if (!b.scheduled_start) return -1;
+        return new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime();
+      });
+  }, [jobs, selectedTechnician]);
+
+  const openSelectedJobs = selectedJobs.filter((job) => !["completed", "canceled"].includes(job.status));
+  const completedSelectedJobs = selectedJobs.filter((job) => job.status === "completed");
+  const nextSelectedJob = openSelectedJobs.find((job) => Boolean(job.scheduled_start)) ?? openSelectedJobs[0] ?? null;
 
   async function createTechnician(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -266,9 +362,58 @@ export default function TechniciansPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Skills</p>
               <p className="mt-2 text-sm text-gray-600">{selectedTechnician.skills.join(", ") || "No skills tagged yet."}</p>
             </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+              <MiniMetric icon={BriefcaseBusiness} label="Open jobs" value={openSelectedJobs.length} />
+              <MiniMetric icon={CheckCircle2} label="Completed" value={completedSelectedJobs.length} />
+              <MiniMetric icon={Clock3} label="Total assigned" value={selectedJobs.length} />
+            </div>
+            {nextSelectedJob && (
+              <div className="mt-4 rounded-lg border border-orange-100 bg-orange-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Next assignment</p>
+                <p className="mt-2 font-semibold text-gray-950">{nextSelectedJob.title}</p>
+                <p className="mt-1 text-xs text-gray-600">
+                  {formatSchedule(nextSelectedJob.scheduled_start)} · {customerById.get(nextSelectedJob.customer_id)?.name ?? "Unknown customer"}
+                </p>
+              </div>
+            )}
             <div className="mt-4 rounded-lg bg-gray-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</p>
               <p className="mt-2 text-sm text-gray-600">{selectedTechnician.notes || "No notes yet."}</p>
+            </div>
+            <div className="mt-5 border-t pt-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Assigned work</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">Jobs currently tied to this technician.</p>
+                </div>
+                <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">Open jobs</a>
+              </div>
+              {selectedJobs.length === 0 ? (
+                <div className="mt-4 rounded-lg border border-dashed p-4 text-sm text-gray-500">
+                  No assigned work yet. Assign this technician from the Jobs board.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {selectedJobs.slice(0, 5).map((job) => {
+                    const customer = customerById.get(job.customer_id);
+                    return (
+                      <div key={job.id} className="rounded-lg border p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-semibold">{job.title}</p>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${jobStatusStyles[job.status]}`}>{jobStatusLabels[job.status]}</span>
+                        </div>
+                        <div className="mt-2 space-y-1 text-xs text-gray-500">
+                          <p className="inline-flex items-center gap-1.5"><CalendarClock className="size-3.5" />{formatSchedule(job.scheduled_start)}</p>
+                          <p className="flex items-center gap-1.5"><UserRound className="size-3.5" />{customer?.name ?? "Unknown customer"}</p>
+                          {customer?.phone && <p className="flex items-center gap-1.5"><Phone className="size-3.5" />{customer.phone}</p>}
+                          {customer?.email && <p className="flex items-center gap-1.5"><Mail className="size-3.5" />{customer.email}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {selectedJobs.length > 5 && <p className="text-xs text-gray-500">Showing 5 of {selectedJobs.length} assigned jobs.</p>}
+                </div>
+              )}
             </div>
             <form key={selectedTechnician.id} onSubmit={updateTechnician} className="mt-5 space-y-4 border-t pt-5">
               <div className="flex items-center justify-between"><h3 className="font-semibold">Edit technician</h3><p className="text-xs text-gray-500">Updates team roster</p></div>
@@ -295,6 +440,18 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof Wrench; label: 
     <div className="rounded-xl border bg-white p-4 shadow-panel">
       <div className="flex items-center justify-between"><p className="text-sm text-gray-500">{label}</p><Icon className="size-5 text-orange-600" /></div>
       <p className="mt-3 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ icon: Icon, label, value }: { icon: typeof Wrench; label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">{label}</p>
+        <Icon className="size-4 text-orange-600" />
+      </div>
+      <p className="mt-2 text-xl font-semibold">{value}</p>
     </div>
   );
 }
