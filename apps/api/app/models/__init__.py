@@ -5,6 +5,7 @@ from app.models.invoice import Invoice
 from app.models.job import Job
 from app.models.membership import Membership
 from app.models.session import RefreshSession
+from app.models.technician import Technician
 from app.models.user import User
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "Job",
     "Membership",
     "RefreshSession",
+    "Technician",
     "User",
 ]

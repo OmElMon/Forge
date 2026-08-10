@@ -16,10 +16,18 @@ from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.company import Company
 from app.models.customer import Customer
-from app.models.enums import CustomerStatus, InvoiceStatus, InvoiceType, JobStatus, UserRole
+from app.models.enums import (
+    CustomerStatus,
+    InvoiceStatus,
+    InvoiceType,
+    JobStatus,
+    TechnicianStatus,
+    UserRole,
+)
 from app.models.invoice import Invoice
 from app.models.job import Job
 from app.models.membership import Membership
+from app.models.technician import Technician
 from app.models.user import User
 
 DEMO_COMPANY_NAME = "CrewPilot Demo HVAC"
@@ -76,6 +84,7 @@ async def _replace_demo_business_data(company: Company) -> None:
     async with AsyncSessionLocal() as db:
         await db.execute(delete(Invoice).where(Invoice.company_id == company.id))
         await db.execute(delete(Job).where(Job.company_id == company.id))
+        await db.execute(delete(Technician).where(Technician.company_id == company.id))
         await db.execute(delete(Customer).where(Customer.company_id == company.id))
         await db.flush()
 
@@ -121,10 +130,53 @@ async def _replace_demo_business_data(company: Company) -> None:
         await db.flush()
 
         customer_by_name = {customer.name: customer for customer in customers}
+        technicians = [
+            Technician(
+                company_id=company.id,
+                name="Jordan Reyes",
+                phone="555-310-8801",
+                email="jordan@example.com",
+                status=TechnicianStatus.ON_JOB,
+                skills=["diagnostics", "maintenance", "air conditioning"],
+                notes="Strong troubleshooter for no-cool calls.",
+            ),
+            Technician(
+                company_id=company.id,
+                name="Dana Smith",
+                phone="555-310-8802",
+                email="dana@example.com",
+                status=TechnicianStatus.AVAILABLE,
+                skills=["maintenance", "tune-ups", "customer education"],
+                notes="Great with recurring maintenance customers.",
+            ),
+            Technician(
+                company_id=company.id,
+                name="Ari Khan",
+                phone="555-310-8803",
+                email="ari@example.com",
+                status=TechnicianStatus.AVAILABLE,
+                skills=["installs", "sales", "furnaces"],
+                notes="Best fit for replacement walkthroughs.",
+            ),
+            Technician(
+                company_id=company.id,
+                name="Priya Patel",
+                phone="555-310-8804",
+                email="priya@example.com",
+                status=TechnicianStatus.OFF_TODAY,
+                skills=["thermostats", "controls", "smart home"],
+                notes="Off today; usually owns thermostat installs.",
+            ),
+        ]
+        db.add_all(technicians)
+        await db.flush()
+        technician_by_name = {technician.name: technician for technician in technicians}
+
         jobs = [
             Job(
                 company_id=company.id,
                 customer_id=customer_by_name["Marianne Foster"].id,
+                technician_id=technician_by_name["Jordan Reyes"].id,
                 title="AC not cooling",
                 status=JobStatus.IN_PROGRESS,
                 scheduled_start=now.replace(hour=8, minute=0, second=0, microsecond=0),
@@ -134,6 +186,7 @@ async def _replace_demo_business_data(company: Company) -> None:
             Job(
                 company_id=company.id,
                 customer_id=customer_by_name["Caleb Morgan"].id,
+                technician_id=technician_by_name["Dana Smith"].id,
                 title="Seasonal maintenance",
                 status=JobStatus.SCHEDULED,
                 scheduled_start=now.replace(hour=10, minute=30, second=0, microsecond=0),
@@ -143,6 +196,7 @@ async def _replace_demo_business_data(company: Company) -> None:
             Job(
                 company_id=company.id,
                 customer_id=customer_by_name["Liam Bennett"].id,
+                technician_id=technician_by_name["Ari Khan"].id,
                 title="Furnace replacement walkthrough",
                 status=JobStatus.SCHEDULED,
                 scheduled_start=now.replace(hour=13, minute=0, second=0, microsecond=0),

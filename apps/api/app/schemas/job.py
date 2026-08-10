@@ -8,6 +8,7 @@ from app.models.enums import JobStatus
 
 class JobCreate(BaseModel):
     customer_id: UUID
+    technician_id: UUID | None = None
     title: str = Field(min_length=2, max_length=160)
     status: JobStatus = JobStatus.NEW
     scheduled_start: datetime | None = None
@@ -17,6 +18,7 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     customer_id: UUID | None = None
+    technician_id: UUID | None = None
     title: str | None = Field(default=None, min_length=2, max_length=160)
     status: JobStatus | None = None
     scheduled_start: datetime | None = None
@@ -28,6 +30,7 @@ class JobRead(BaseModel):
     id: UUID
     company_id: UUID
     customer_id: UUID
+    technician_id: UUID | None
     title: str
     status: JobStatus
     scheduled_start: datetime | None

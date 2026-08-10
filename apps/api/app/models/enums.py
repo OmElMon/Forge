@@ -40,3 +40,9 @@ class InvoiceStatus(StrEnum):
     CONVERTED = "converted"
     PAID = "paid"
     VOID = "void"
+
+
+class TechnicianStatus(StrEnum):
+    AVAILABLE = "available"
+    ON_JOB = "on_job"
+    OFF_TODAY = "off_today"

@@ -8,6 +8,7 @@ from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.job import Job
+from app.models.technician import Technician
 from app.schemas.job import JobCreate, JobRead, JobUpdate
 from app.schemas.principal import Principal
 
@@ -27,6 +28,23 @@ async def ensure_company_customer(
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+
+
+async def get_company_technician(
+    technician_id: UUID,
+    db: AsyncSession,
+    principal: Principal,
+) -> Technician:
+    result = await db.execute(
+        select(Technician).where(
+            Technician.id == technician_id,
+            Technician.company_id == principal.company_id,
+        )
+    )
+    technician = result.scalar_one_or_none()
+    if technician is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found.")
+    return technician
 
 
 async def get_company_job(
@@ -68,7 +86,12 @@ async def create_job(
     principal: Principal = Depends(get_principal),
 ) -> Job:
     await ensure_company_customer(payload.customer_id, db, principal)
-    job = Job(company_id=principal.company_id, **payload.model_dump())
+    data = payload.model_dump()
+    technician_id = data.get("technician_id")
+    if technician_id is not None:
+        technician = await get_company_technician(technician_id, db, principal)
+        data["technician_name"] = technician.name
+    job = Job(company_id=principal.company_id, **data)
     db.add(job)
     await db.commit()
     await db.refresh(job)
@@ -95,6 +118,11 @@ async def update_job(
     updates = payload.model_dump(exclude_unset=True)
     if "customer_id" in updates:
         await ensure_company_customer(updates["customer_id"], db, principal)
+    if updates.get("technician_id") is not None:
+        technician = await get_company_technician(updates["technician_id"], db, principal)
+        updates["technician_name"] = technician.name
+    elif "technician_id" in updates and updates["technician_id"] is None:
+        updates["technician_name"] = None
     for field, value in updates.items():
         setattr(job, field, value)
     await db.commit()

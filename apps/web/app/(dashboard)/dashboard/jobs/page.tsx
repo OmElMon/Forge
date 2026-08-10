@@ -20,12 +20,20 @@ type Customer = {
   email: string | null;
 };
 
+type Technician = {
+  id: string;
+  name: string;
+  status: "available" | "on_job" | "off_today";
+  skills: string[];
+};
+
 type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
 
 type Job = {
   id: string;
   company_id: string;
   customer_id: string;
+  technician_id: string | null;
   title: string;
   status: JobStatus;
   scheduled_start: string | null;
@@ -80,11 +88,13 @@ function errorMessage(payload: unknown, fallback: string) {
 
 function jobPayload(form: FormData) {
   const scheduledStart = form.get("scheduled_start");
+  const technicianId = form.get("technician_id");
   return {
     customer_id: form.get("customer_id"),
     notes: form.get("notes") || null,
     scheduled_start: scheduledStart ? new Date(String(scheduledStart)).toISOString() : null,
     status: form.get("status"),
+    technician_id: technicianId ? String(technicianId) : null,
     technician_name: form.get("technician_name") || null,
     title: form.get("title"),
   };
@@ -107,6 +117,7 @@ function dateTimeInputValue(value: string | null) {
 
 export default function JobsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,17 +131,23 @@ export default function JobsPage() {
     () => new Map(customers.map((customer) => [customer.id, customer])),
     [customers],
   );
+  const technicianById = useMemo(
+    () => new Map(technicians.map((technician) => [technician.id, technician])),
+    [technicians],
+  );
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [customersResponse, jobsResponse] = await Promise.all([
+      const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
         fetch("/api/customers", { cache: "no-store" }),
         fetch("/api/jobs", { cache: "no-store" }),
+        fetch("/api/technicians", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
+      const techniciansPayload = await readApiResponse(techniciansResponse);
       if (!customersResponse.ok) {
         setError(errorMessage(customersPayload, "Unable to load customers."));
         return;
@@ -139,8 +156,13 @@ export default function JobsPage() {
         setError(errorMessage(jobsPayload, "Unable to load jobs."));
         return;
       }
+      if (!techniciansResponse.ok) {
+        setError(errorMessage(techniciansPayload, "Unable to load technicians."));
+        return;
+      }
       const loadedJobs = jobsPayload as Job[];
       setCustomers(customersPayload as Customer[]);
+      setTechnicians(techniciansPayload as Technician[]);
       setJobs(loadedJobs);
       setSelectedId((current) => current ?? loadedJobs[0]?.id ?? null);
     } catch {
@@ -159,11 +181,12 @@ export default function JobsPage() {
     if (!normalized) return jobs;
     return jobs.filter((job) => {
       const customer = customerById.get(job.customer_id);
-      return [job.title, job.status, job.technician_name, customer?.name]
+      const technician = job.technician_id ? technicianById.get(job.technician_id) : null;
+      return [job.title, job.status, technician?.name, job.technician_name, customer?.name]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(normalized));
     });
-  }, [customerById, jobs, query]);
+  }, [customerById, jobs, query, technicianById]);
 
   const jobCounts = useMemo(() => {
     return jobs.reduce(
@@ -300,6 +323,7 @@ export default function JobsPage() {
               {filteredJobs.map((job) => {
                 const isSelected = job.id === selectedJob?.id;
                 const customer = customerById.get(job.customer_id);
+                const technician = job.technician_id ? technicianById.get(job.technician_id) : null;
                 return (
                   <button
                     key={job.id}
@@ -317,7 +341,7 @@ export default function JobsPage() {
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                         <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{customer?.name ?? "Unknown customer"}</span>
                         <span className="inline-flex items-center gap-1"><CalendarClock className="size-3.5" />{formatSchedule(job.scheduled_start)}</span>
-                        {job.technician_name && <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{job.technician_name}</span>}
+                        {(technician?.name || job.technician_name) && <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{technician?.name ?? job.technician_name}</span>}
                       </div>
                       {job.notes && <p className="mt-2 max-w-2xl text-sm text-gray-500">{job.notes}</p>}
                     </div>
@@ -353,7 +377,7 @@ export default function JobsPage() {
               </p>
               <p className="inline-flex items-center gap-2">
                 <Wrench className="size-4 text-gray-400" />
-                {selectedJob.technician_name || "No technician assigned yet"}
+                {(selectedJob.technician_id ? technicianById.get(selectedJob.technician_id)?.name : null) || selectedJob.technician_name || "No technician assigned yet"}
               </p>
               <p>{selectedJob.notes || "No job notes yet."}</p>
             </div>
@@ -363,7 +387,7 @@ export default function JobsPage() {
                 <h3 className="font-semibold">Edit job</h3>
                 <p className="text-xs text-gray-500">Changes save to operations</p>
               </div>
-              <JobFields customers={customers} job={selectedJob} />
+              <JobFields customers={customers} technicians={technicians} job={selectedJob} />
               <button disabled={updating} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-950 text-sm font-semibold text-white shadow-sm hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
                 {updating ? <LoaderCircle className="size-4 animate-spin" /> : null}
                 Save changes
@@ -384,7 +408,7 @@ export default function JobsPage() {
           </div>
 
           <form onSubmit={createJob} className="mt-5 space-y-4">
-            <JobFields customers={customers} />
+            <JobFields customers={customers} technicians={technicians} />
             <button disabled={saving || customers.length === 0} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
               {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
               Save job
@@ -408,7 +432,7 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof BriefcaseBusine
   );
 }
 
-function JobFields({ customers, job }: { customers: Customer[]; job?: Job }) {
+function JobFields({ customers, technicians, job }: { customers: Customer[]; technicians: Technician[]; job?: Job }) {
   return (
     <>
       <label className="block text-sm font-medium">
@@ -442,7 +466,17 @@ function JobFields({ customers, job }: { customers: Customer[]; job?: Job }) {
       </div>
       <label className="block text-sm font-medium">
         Technician
-        <input name="technician_name" defaultValue={job?.technician_name ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Jordan Reyes" />
+        <select name="technician_id" defaultValue={job?.technician_id ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+          <option value="">Unassigned</option>
+          {technicians.map((technician) => (
+            <option key={technician.id} value={technician.id}>
+              {technician.name} · {technician.status.replace("_", " ")}
+            </option>
+          ))}
+        </select>
+        {job?.technician_name && !job.technician_id ? (
+          <input name="technician_name" type="hidden" defaultValue={job.technician_name} />
+        ) : null}
       </label>
       <label className="block text-sm font-medium">
         Notes

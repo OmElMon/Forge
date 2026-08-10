@@ -23,10 +23,17 @@ type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
 type Job = {
   id: string;
   customer_id: string;
+  technician_id: string | null;
   title: string;
   status: JobStatus;
   scheduled_start: string | null;
   technician_name: string | null;
+};
+
+type Technician = {
+  id: string;
+  name: string;
+  status: "available" | "on_job" | "off_today";
 };
 
 type InvoiceType = "estimate" | "invoice";
@@ -93,6 +100,7 @@ export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -101,21 +109,24 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const [customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
+        const [customersResponse, jobsResponse, invoicesResponse, techniciansResponse] = await Promise.all([
           fetch("/api/customers", { cache: "no-store" }),
           fetch("/api/jobs", { cache: "no-store" }),
           fetch("/api/invoices", { cache: "no-store" }),
+          fetch("/api/technicians", { cache: "no-store" }),
         ]);
         const customersPayload = await readApiResponse(customersResponse);
         const jobsPayload = await readApiResponse(jobsResponse);
         const invoicesPayload = await readApiResponse(invoicesResponse);
-        if (!customersResponse.ok || !jobsResponse.ok || !invoicesResponse.ok) {
+        const techniciansPayload = await readApiResponse(techniciansResponse);
+        if (!customersResponse.ok || !jobsResponse.ok || !invoicesResponse.ok || !techniciansResponse.ok) {
           setError("CrewPilot OS could not load the latest operations data.");
           return;
         }
         setCustomers(customersPayload as Customer[]);
         setJobs(jobsPayload as Job[]);
         setInvoices(invoicesPayload as Invoice[]);
+        setTechnicians(techniciansPayload as Technician[]);
       } catch {
         setError("CrewPilot OS could not reach the operations service.");
       } finally {
@@ -137,8 +148,9 @@ export default function DashboardPage() {
     .sort((a, b) => new Date(a.scheduled_start!).getTime() - new Date(b.scheduled_start!).getTime());
   const openJobs = jobs.filter((job) => !["completed", "canceled"].includes(job.status));
   const completedJobs = jobs.filter((job) => job.status === "completed");
-  const unassignedJobs = openJobs.filter((job) => !job.technician_name);
-  const activeTechnicians = new Set(openJobs.map((job) => job.technician_name).filter(Boolean)).size;
+  const unassignedJobs = openJobs.filter((job) => !job.technician_id && !job.technician_name);
+  const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
+  const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
   const paidRevenueCents = invoices
     .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
@@ -260,11 +272,11 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.min(activeTechnicians * 20, 100)}%` }} />
+              <div className="h-full rounded-full bg-orange-500" style={{ width: `${technicians.length === 0 ? 0 : Math.round((activeTechnicians / technicians.length) * 100)}%` }} />
             </div>
             <div className="mt-3 flex justify-between text-xs text-gray-400">
-              <span>{openJobs.length} open jobs</span>
-              <span>{unassignedJobs.length} unassigned</span>
+              <span>{availableTechnicians} available</span>
+              <span>{unassignedJobs.length} jobs unassigned</span>
             </div>
           </article>
           <article className="rounded-xl border bg-white p-5 shadow-panel">

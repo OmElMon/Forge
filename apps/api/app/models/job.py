@@ -24,6 +24,12 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
         nullable=False,
     )
+    technician_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("technicians.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[JobStatus] = mapped_column(
         Enum(

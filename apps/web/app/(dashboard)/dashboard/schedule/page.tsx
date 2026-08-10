@@ -24,6 +24,7 @@ type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
 type Job = {
   id: string;
   customer_id: string;
+  technician_id: string | null;
   title: string;
   status: JobStatus;
   scheduled_start: string | null;
@@ -156,7 +157,7 @@ export default function SchedulePage() {
   const todayKey = today.toISOString().slice(0, 10);
   const todaysJobs = scheduledJobs.filter((job) => dateKey(job.scheduled_start) === todayKey);
   const unscheduledJobs = scheduledJobs.filter((job) => !job.scheduled_start);
-  const assignedJobs = scheduledJobs.filter((job) => Boolean(job.technician_name)).length;
+  const assignedJobs = scheduledJobs.filter((job) => Boolean(job.technician_id || job.technician_name)).length;
 
   const groupedJobs = useMemo(() => {
     return scheduledJobs.reduce((groups, job) => {
