@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Clock3,
   LoaderCircle,
+  ReceiptText,
   Route,
   Search,
   UserRound,
@@ -136,6 +137,8 @@ export default function SchedulePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
+  const [invoiceCreatingId, setInvoiceCreatingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
 
@@ -189,6 +192,7 @@ export default function SchedulePage() {
   async function updateJobStatus(job: Job, status: JobStatus) {
     setWorkflowUpdatingId(job.id);
     setError("");
+    setNotice("");
 
     try {
       const response = await fetch(`/api/jobs/${job.id}`, {
@@ -209,6 +213,47 @@ export default function SchedulePage() {
       setError("CrewPilot OS could not move this job.");
     } finally {
       setWorkflowUpdatingId(null);
+    }
+  }
+
+  async function createInvoiceFromJob(job: Job) {
+    setInvoiceCreatingId(job.id);
+    setError("");
+    setNotice("");
+
+    const customer = customerById.get(job.customer_id);
+    try {
+      const response = await fetch("/api/invoices", {
+        body: JSON.stringify({
+          amount_cents: 0,
+          customer_id: job.customer_id,
+          document_type: "invoice",
+          due_at: null,
+          notes: [
+            `Created from completed job: ${job.title}`,
+            `Customer: ${customer?.name ?? "Unknown customer"}`,
+            job.scheduled_start ? `Scheduled: ${formatTime(job.scheduled_start)}` : null,
+            job.notes ? `Job notes: ${job.notes}` : null,
+            "Add final labor/material pricing before sending.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          status: "draft",
+          title: `${job.title} invoice`,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to create invoice. Status ${response.status}.`));
+        return;
+      }
+      setNotice("Draft invoice created. Open Estimates & invoices to price and send it.");
+    } catch {
+      setError("CrewPilot OS could not create an invoice from this job.");
+    } finally {
+      setInvoiceCreatingId(null);
     }
   }
 
@@ -323,6 +368,7 @@ export default function SchedulePage() {
       </div>
 
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
+      {notice && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{notice}</p>}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="overflow-hidden rounded-xl border bg-white shadow-panel">
@@ -394,6 +440,17 @@ export default function SchedulePage() {
                               disabled={workflowUpdatingId === job.id}
                               onMove={(status) => updateJobStatus(job, status)}
                             />
+                            {job.status === "completed" && (
+                              <button
+                                type="button"
+                                disabled={invoiceCreatingId === job.id}
+                                onClick={() => createInvoiceFromJob(job)}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <ReceiptText className="size-3.5" />
+                                {invoiceCreatingId === job.id ? "Creating…" : "Invoice draft"}
+                              </button>
+                            )}
                             <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">
                               Edit job
                             </a>

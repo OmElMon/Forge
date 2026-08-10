@@ -8,6 +8,7 @@ import {
   Clock3,
   LoaderCircle,
   Plus,
+  ReceiptText,
   Search,
   UserRound,
   Wrench,
@@ -143,6 +144,8 @@ export default function JobsPage() {
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
+  const [invoiceCreatingId, setInvoiceCreatingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -279,6 +282,7 @@ export default function JobsPage() {
   async function updateJobStatus(job: Job, status: JobStatus) {
     setWorkflowUpdatingId(job.id);
     setError("");
+    setNotice("");
 
     try {
       const response = await fetch(`/api/jobs/${job.id}`, {
@@ -300,6 +304,47 @@ export default function JobsPage() {
       setError("CrewPilot OS could not move this job.");
     } finally {
       setWorkflowUpdatingId(null);
+    }
+  }
+
+  async function createInvoiceFromJob(job: Job) {
+    setInvoiceCreatingId(job.id);
+    setError("");
+    setNotice("");
+
+    const customer = customerById.get(job.customer_id);
+    try {
+      const response = await fetch("/api/invoices", {
+        body: JSON.stringify({
+          amount_cents: 0,
+          customer_id: job.customer_id,
+          document_type: "invoice",
+          due_at: null,
+          notes: [
+            `Created from completed job: ${job.title}`,
+            `Customer: ${customer?.name ?? "Unknown customer"}`,
+            job.scheduled_start ? `Scheduled: ${formatSchedule(job.scheduled_start)}` : null,
+            job.notes ? `Job notes: ${job.notes}` : null,
+            "Add final labor/material pricing before sending.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          status: "draft",
+          title: `${job.title} invoice`,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to create invoice. Status ${response.status}.`));
+        return;
+      }
+      setNotice("Draft invoice created. Open Estimates & invoices to price and send it.");
+    } catch {
+      setError("CrewPilot OS could not create an invoice from this job.");
+    } finally {
+      setInvoiceCreatingId(null);
     }
   }
 
@@ -375,6 +420,7 @@ export default function JobsPage() {
         </div>
 
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
+        {notice && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{notice}</p>}
 
         <div className="mt-6 overflow-hidden rounded-xl border bg-white shadow-panel">
           <div className="flex items-center justify-between border-b px-5 py-4">
@@ -486,6 +532,27 @@ export default function JobsPage() {
                 onMove={(status) => updateJobStatus(selectedJob, status)}
               />
             </div>
+
+            {selectedJob.status === "completed" && (
+              <div className="mt-5 border-t pt-5">
+                <div>
+                  <h3 className="font-semibold">Revenue action</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">Turn completed work into a billable draft.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={invoiceCreatingId === selectedJob.id}
+                  onClick={() => createInvoiceFromJob(selectedJob)}
+                  className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <ReceiptText className="size-4" />
+                  {invoiceCreatingId === selectedJob.id ? "Creating invoice…" : "Create invoice draft"}
+                </button>
+                <a href="/dashboard/invoices" className="mt-3 block text-center text-xs font-semibold text-orange-600 hover:text-orange-700">
+                  Open Estimates & invoices
+                </a>
+              </div>
+            )}
 
             <form key={selectedJob.id} onSubmit={updateJob} className="mt-5 space-y-4 border-t pt-5">
               <div className="flex items-center justify-between">
