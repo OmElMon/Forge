@@ -22,9 +22,9 @@ APPLICATION_TABLES = (
 
 def upgrade() -> None:
     for table_name in APPLICATION_TABLES:
-        op.execute(f'ALTER TABLE "{table_name}" ENABLE ROW LEVEL SECURITY')
+        op.execute(f'ALTER TABLE IF EXISTS "{table_name}" ENABLE ROW LEVEL SECURITY')
 
 
 def downgrade() -> None:
     for table_name in reversed(APPLICATION_TABLES):
-        op.execute(f'ALTER TABLE "{table_name}" DISABLE ROW LEVEL SECURITY')
+        op.execute(f'ALTER TABLE IF EXISTS "{table_name}" DISABLE ROW LEVEL SECURITY')
