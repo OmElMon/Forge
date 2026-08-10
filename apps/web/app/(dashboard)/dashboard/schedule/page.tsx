@@ -19,6 +19,15 @@ type Customer = {
   email: string | null;
 };
 
+type TechnicianStatus = "available" | "on_job" | "off_today";
+
+type Technician = {
+  id: string;
+  name: string;
+  status: TechnicianStatus;
+  skills: string[];
+};
+
 type JobStatus = "new" | "scheduled" | "in_progress" | "completed" | "canceled";
 
 type Job = {
@@ -46,6 +55,18 @@ const statusLabels: Record<JobStatus, string> = {
   in_progress: "In progress",
   new: "New",
   scheduled: "Scheduled",
+};
+
+const technicianStatusStyles: Record<TechnicianStatus, string> = {
+  available: "bg-emerald-50 text-emerald-700",
+  off_today: "bg-gray-100 text-gray-700",
+  on_job: "bg-blue-50 text-blue-700",
+};
+
+const technicianStatusLabels: Record<TechnicianStatus, string> = {
+  available: "Available",
+  off_today: "Off today",
+  on_job: "On job",
 };
 
 async function readApiResponse(response: Response) {
@@ -93,6 +114,7 @@ function formatDay(value: string) {
 
 export default function SchedulePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -102,17 +124,23 @@ export default function SchedulePage() {
     () => new Map(customers.map((customer) => [customer.id, customer])),
     [customers],
   );
+  const technicianById = useMemo(
+    () => new Map(technicians.map((technician) => [technician.id, technician])),
+    [technicians],
+  );
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [customersResponse, jobsResponse] = await Promise.all([
+      const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
         fetch("/api/customers", { cache: "no-store" }),
         fetch("/api/jobs", { cache: "no-store" }),
+        fetch("/api/technicians", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
+      const techniciansPayload = await readApiResponse(techniciansResponse);
       if (!customersResponse.ok) {
         setError(errorMessage(customersPayload, "Unable to load customers."));
         return;
@@ -121,8 +149,13 @@ export default function SchedulePage() {
         setError(errorMessage(jobsPayload, "Unable to load jobs."));
         return;
       }
+      if (!techniciansResponse.ok) {
+        setError(errorMessage(techniciansPayload, "Unable to load technicians."));
+        return;
+      }
       setCustomers(customersPayload as Customer[]);
       setJobs(jobsPayload as Job[]);
+      setTechnicians(techniciansPayload as Technician[]);
     } catch {
       setError("CrewPilot OS could not load the schedule.");
     } finally {
@@ -141,7 +174,8 @@ export default function SchedulePage() {
       .filter((job) => {
         if (!normalized) return true;
         const customer = customerById.get(job.customer_id);
-        return [job.title, job.technician_name, customer?.name, job.status]
+        const technician = job.technician_id ? technicianById.get(job.technician_id) : null;
+        return [job.title, technician?.name, job.technician_name, customer?.name, job.status, technician?.status, ...(technician?.skills ?? [])]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(normalized));
       })
@@ -151,13 +185,16 @@ export default function SchedulePage() {
         if (!b.scheduled_start) return -1;
         return new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime();
       });
-  }, [customerById, jobs, query]);
+  }, [customerById, jobs, query, technicianById]);
 
   const today = startOfToday();
   const todayKey = today.toISOString().slice(0, 10);
   const todaysJobs = scheduledJobs.filter((job) => dateKey(job.scheduled_start) === todayKey);
   const unscheduledJobs = scheduledJobs.filter((job) => !job.scheduled_start);
   const assignedJobs = scheduledJobs.filter((job) => Boolean(job.technician_id || job.technician_name)).length;
+  const unassignedJobs = scheduledJobs.filter((job) => !job.technician_id && !job.technician_name);
+  const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
+  const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
 
   const groupedJobs = useMemo(() => {
     return scheduledJobs.reduce((groups, job) => {
@@ -237,6 +274,8 @@ export default function SchedulePage() {
                   <div className="divide-y">
                     {dayJobs.map((job) => {
                       const customer = customerById.get(job.customer_id);
+                      const technician = job.technician_id ? technicianById.get(job.technician_id) : null;
+                      const technicianName = technician?.name ?? job.technician_name;
                       return (
                         <div key={job.id} className="grid gap-3 px-5 py-4 hover:bg-gray-50 sm:grid-cols-[90px_1fr_auto] sm:items-center">
                           <p className="text-sm font-semibold text-gray-500">{formatTime(job.scheduled_start)}</p>
@@ -249,8 +288,16 @@ export default function SchedulePage() {
                             </div>
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                               <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{customer?.name ?? "Unknown customer"}</span>
-                              <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{job.technician_name || "Unassigned"}</span>
+                              <span className="inline-flex items-center gap-1"><Wrench className="size-3.5" />{technicianName || "Unassigned"}</span>
+                              {technician && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${technicianStatusStyles[technician.status]}`}>{technicianStatusLabels[technician.status]}</span>}
                             </div>
+                            {technician?.skills.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {technician.skills.slice(0, 3).map((skill) => (
+                                  <span key={skill} className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">{skill}</span>
+                                ))}
+                              </div>
+                            ) : null}
                             {job.notes && <p className="mt-2 text-sm text-gray-500">{job.notes}</p>}
                           </div>
                           <a href="/dashboard/jobs" className="text-xs font-semibold text-orange-600 hover:text-orange-700">
@@ -280,6 +327,9 @@ export default function SchedulePage() {
             <div className="mt-5 space-y-3">
               <HealthRow label="Jobs scheduled today" value={todaysJobs.length} />
               <HealthRow label="Jobs with technician" value={assignedJobs} />
+              <HealthRow label="Jobs needing technician" value={unassignedJobs.length} warning={unassignedJobs.length > 0} />
+              <HealthRow label="Available technicians" value={availableTechnicians} />
+              <HealthRow label="Active technicians" value={activeTechnicians} />
               <HealthRow label="Jobs needing schedule" value={unscheduledJobs.length} warning={unscheduledJobs.length > 0} />
             </div>
           </section>
@@ -299,6 +349,28 @@ export default function SchedulePage() {
                     <p className="mt-1 text-xs text-gray-500">
                       {customerById.get(job.customer_id)?.name ?? "Unknown customer"}
                     </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border bg-white p-5 shadow-panel">
+            <h2 className="font-semibold">Team availability</h2>
+            <p className="mt-1 text-xs text-gray-500">Real technician records used by dispatch.</p>
+            {technicians.length === 0 ? (
+              <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">
+                Add technicians to start assigning work from the schedule.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {technicians.slice(0, 6).map((technician) => (
+                  <div key={technician.id} className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{technician.name}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${technicianStatusStyles[technician.status]}`}>{technicianStatusLabels[technician.status]}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{technician.skills.slice(0, 3).join(", ") || "No skills tagged yet"}</p>
                   </div>
                 ))}
               </div>
