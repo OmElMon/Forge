@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
   CalendarPlus,
+  CircleDollarSign,
   Clock3,
   LoaderCircle,
   PhoneMissed,
@@ -26,6 +27,19 @@ type Job = {
   status: JobStatus;
   scheduled_start: string | null;
   technician_name: string | null;
+};
+
+type InvoiceType = "estimate" | "invoice";
+type InvoiceStatus = "draft" | "sent" | "approved" | "converted" | "paid" | "void";
+
+type Invoice = {
+  id: string;
+  customer_id: string;
+  document_type: InvoiceType;
+  status: InvoiceStatus;
+  title: string;
+  amount_cents: number;
+  due_at: string | null;
 };
 
 const statusStyles: Record<JobStatus, string> = {
@@ -67,9 +81,18 @@ function formatTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatMoney(cents: number) {
+  return new Intl.NumberFormat(undefined, {
+    currency: "USD",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(cents / 100);
+}
+
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -78,18 +101,21 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const [customersResponse, jobsResponse] = await Promise.all([
+        const [customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
           fetch("/api/customers", { cache: "no-store" }),
           fetch("/api/jobs", { cache: "no-store" }),
+          fetch("/api/invoices", { cache: "no-store" }),
         ]);
         const customersPayload = await readApiResponse(customersResponse);
         const jobsPayload = await readApiResponse(jobsResponse);
-        if (!customersResponse.ok || !jobsResponse.ok) {
+        const invoicesPayload = await readApiResponse(invoicesResponse);
+        if (!customersResponse.ok || !jobsResponse.ok || !invoicesResponse.ok) {
           setError("CrewPilot OS could not load the latest operations data.");
           return;
         }
         setCustomers(customersPayload as Customer[]);
         setJobs(jobsPayload as Job[]);
+        setInvoices(invoicesPayload as Invoice[]);
       } catch {
         setError("CrewPilot OS could not reach the operations service.");
       } finally {
@@ -113,12 +139,24 @@ export default function DashboardPage() {
   const completedJobs = jobs.filter((job) => job.status === "completed");
   const unassignedJobs = openJobs.filter((job) => !job.technician_name);
   const activeTechnicians = new Set(openJobs.map((job) => job.technician_name).filter(Boolean)).size;
+  const paidRevenueCents = invoices
+    .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const openInvoiceCents = invoices
+    .filter((invoice) => invoice.document_type === "invoice" && !["paid", "void"].includes(invoice.status))
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const openEstimateCents = invoices
+    .filter((invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status))
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const approvalQueue = invoices.filter(
+    (invoice) => invoice.document_type === "estimate" && ["sent", "approved"].includes(invoice.status),
+  );
 
   const metrics = [
-    { label: "Customers", value: customers.length, note: "CRM records" },
-    { label: "Open jobs", value: openJobs.length, note: "Need progress" },
-    { label: "Scheduled today", value: todayJobs.length, note: "Dispatch focus" },
-    { label: "Completed jobs", value: completedJobs.length, note: "All time" },
+    { label: "Paid revenue", value: formatMoney(paidRevenueCents), note: "Collected invoices" },
+    { label: "Open invoices", value: formatMoney(openInvoiceCents), note: "Awaiting payment" },
+    { label: "Open estimates", value: formatMoney(openEstimateCents), note: `${approvalQueue.length} awaiting decision` },
+    { label: "Open jobs", value: openJobs.length.toLocaleString(), note: `${todayJobs.length} scheduled today` },
   ];
 
   return (
@@ -139,6 +177,9 @@ export default function DashboardPage() {
           </Link>
           <Link href="/dashboard/jobs" className="flex h-10 items-center gap-2 rounded-lg bg-orange-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-orange-700">
             <Plus className="size-4" /> New job
+          </Link>
+          <Link href="/dashboard/invoices" className="flex h-10 items-center gap-2 rounded-lg bg-gray-950 px-4 text-sm font-medium text-white shadow-sm hover:bg-gray-800">
+            <CircleDollarSign className="size-4" /> New invoice
           </Link>
         </div>
       </div>
@@ -245,6 +286,15 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-sm font-semibold">{unassignedJobs.length} jobs need assignment</p>
                   <p className="text-xs text-gray-500">Assign a technician from the Jobs page.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-orange-50 text-orange-600">
+                  <CircleDollarSign className="size-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">{approvalQueue.length} estimates awaiting follow-up</p>
+                  <p className="text-xs text-gray-500">{formatMoney(openEstimateCents)} in open quoted work.</p>
                 </div>
               </div>
             </div>

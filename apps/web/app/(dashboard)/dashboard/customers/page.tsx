@@ -4,6 +4,8 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
   CalendarClock,
+  CircleDollarSign,
+  FileText,
   LoaderCircle,
   Mail,
   MapPin,
@@ -37,6 +39,20 @@ type Job = {
   scheduled_start: string | null;
 };
 
+type InvoiceType = "estimate" | "invoice";
+type InvoiceStatus = "draft" | "sent" | "approved" | "converted" | "paid" | "void";
+
+type Invoice = {
+  id: string;
+  customer_id: string;
+  document_type: InvoiceType;
+  status: InvoiceStatus;
+  title: string;
+  amount_cents: number;
+  due_at: string | null;
+  created_at: string;
+};
+
 const statusStyles: Record<CustomerStatus, string> = {
   active: "bg-emerald-50 text-emerald-700",
   inactive: "bg-gray-100 text-gray-600",
@@ -49,6 +65,24 @@ const jobStatusLabels: Record<JobStatus, string> = {
   in_progress: "In progress",
   new: "New",
   scheduled: "Scheduled",
+};
+
+const invoiceStatusLabels: Record<InvoiceStatus, string> = {
+  approved: "Approved",
+  converted: "Converted",
+  draft: "Draft",
+  paid: "Paid",
+  sent: "Sent",
+  void: "Void",
+};
+
+const invoiceStatusStyles: Record<InvoiceStatus, string> = {
+  approved: "bg-blue-50 text-blue-700",
+  converted: "bg-violet-50 text-violet-700",
+  draft: "bg-gray-100 text-gray-700",
+  paid: "bg-emerald-50 text-emerald-700",
+  sent: "bg-orange-50 text-orange-700",
+  void: "bg-rose-50 text-rose-700",
 };
 
 async function readApiResponse(response: Response) {
@@ -89,9 +123,18 @@ function customerPayload(form: FormData) {
   };
 }
 
+function formatMoney(cents: number) {
+  return new Intl.NumberFormat(undefined, {
+    currency: "USD",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(cents / 100);
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -102,17 +145,32 @@ export default function CustomersPage() {
   const selectedCustomerJobs = selectedCustomer
     ? jobs.filter((job) => job.customer_id === selectedCustomer.id).slice(0, 3)
     : [];
+  const selectedCustomerInvoices = selectedCustomer
+    ? invoices.filter((invoice) => invoice.customer_id === selectedCustomer.id)
+    : [];
+  const recentCustomerInvoices = selectedCustomerInvoices.slice(0, 3);
+  const selectedPaidCents = selectedCustomerInvoices
+    .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const selectedUnpaidCents = selectedCustomerInvoices
+    .filter((invoice) => invoice.document_type === "invoice" && !["paid", "void"].includes(invoice.status))
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const selectedOpenEstimateCents = selectedCustomerInvoices
+    .filter((invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status))
+    .reduce((total, invoice) => total + invoice.amount_cents, 0);
 
   async function loadCustomers() {
     setLoading(true);
     setError("");
     try {
-      const [customersResponse, jobsResponse] = await Promise.all([
+      const [customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
         fetch("/api/customers", { cache: "no-store" }),
         fetch("/api/jobs", { cache: "no-store" }),
+        fetch("/api/invoices", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
+      const invoicesPayload = await readApiResponse(invoicesResponse);
       if (!customersResponse.ok) {
         setError(errorMessage(customersPayload, "Unable to load customers."));
         return;
@@ -121,9 +179,14 @@ export default function CustomersPage() {
         setError(errorMessage(jobsPayload, "Unable to load jobs."));
         return;
       }
+      if (!invoicesResponse.ok) {
+        setError(errorMessage(invoicesPayload, "Unable to load invoices."));
+        return;
+      }
       const loaded = customersPayload as Customer[];
       setCustomers(loaded);
       setJobs(jobsPayload as Job[]);
+      setInvoices(invoicesPayload as Invoice[]);
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load customers.");
@@ -323,16 +386,22 @@ export default function CustomersPage() {
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-lg border p-4">
                 <BriefcaseBusiness className="size-5 text-orange-600" />
-                <p className="mt-3 text-sm font-semibold">Jobs & estimates</p>
+                <p className="mt-3 text-sm font-semibold">Jobs</p>
                 <p className="mt-1 text-xs text-gray-500">
                   {selectedCustomerJobs.length} linked job{selectedCustomerJobs.length === 1 ? "" : "s"} so far.
                 </p>
               </div>
               <div className="rounded-lg border p-4">
-                <CalendarClock className="size-5 text-orange-600" />
-                <p className="mt-3 text-sm font-semibold">Timeline</p>
-                <p className="mt-1 text-xs text-gray-500">First touch created {new Date(selectedCustomer.created_at).toLocaleDateString()}.</p>
+                <CircleDollarSign className="size-5 text-orange-600" />
+                <p className="mt-3 text-sm font-semibold">Customer value</p>
+                <p className="mt-1 text-xs text-gray-500">{formatMoney(selectedPaidCents)} paid · {formatMoney(selectedUnpaidCents)} unpaid.</p>
               </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <MoneyStat label="Paid" value={formatMoney(selectedPaidCents)} />
+              <MoneyStat label="Unpaid" value={formatMoney(selectedUnpaidCents)} />
+              <MoneyStat label="Open estimates" value={formatMoney(selectedOpenEstimateCents)} />
             </div>
 
             <div className="mt-5 rounded-lg border p-4">
@@ -354,6 +423,37 @@ export default function CustomersPage() {
                       </div>
                       <p className="mt-1 text-xs text-gray-500">
                         {job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : "Not scheduled"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">Recent estimates & invoices</p>
+                <a href="/dashboard/invoices" className="text-xs font-semibold text-orange-600 hover:text-orange-700">Open invoices</a>
+              </div>
+              {recentCustomerInvoices.length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No estimates or invoices linked to this customer yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {recentCustomerInvoices.map((invoice) => (
+                    <div key={invoice.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{invoice.title}</p>
+                          <p className="mt-1 text-xs capitalize text-gray-500">
+                            {invoice.document_type} · {formatMoney(invoice.amount_cents)}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${invoiceStatusStyles[invoice.status]}`}>
+                          {invoiceStatusLabels[invoice.status]}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {invoice.due_at ? `Due ${new Date(invoice.due_at).toLocaleDateString()}` : `Created ${new Date(invoice.created_at).toLocaleDateString()}`}
                       </p>
                     </div>
                   ))}
@@ -395,6 +495,16 @@ export default function CustomersPage() {
           </form>
         </section>
       </aside>
+    </div>
+  );
+}
+
+function MoneyStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-white p-3">
+      <FileText className="size-4 text-orange-600" />
+      <p className="mt-2 text-xs text-gray-500">{label}</p>
+      <p className="text-sm font-semibold">{value}</p>
     </div>
   );
 }
