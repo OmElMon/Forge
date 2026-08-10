@@ -1,4 +1,4 @@
-.PHONY: dev down logs api-test api-lint web-lint
+.PHONY: dev down logs api-test api-lint web-lint demo-seed
 
 dev:
 	docker compose up --build
@@ -17,3 +17,6 @@ api-lint:
 
 web-lint:
 	docker compose run --rm web npm run lint
+
+demo-seed:
+	docker compose exec api python -m app.scripts.seed_demo

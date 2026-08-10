@@ -2,11 +2,24 @@
 
 CrewPilot OS is an AI-native operating system for home service businesses. The first market is HVAC, while the domain and tenant boundaries are designed for other field-service verticals.
 
-## Foundation
+It is being built as a realistic SaaS-style product: authenticated workspaces, tenant-scoped data, CRM records, jobs, scheduling, estimates, invoices, and revenue-aware dashboards.
+
+## What is working now
+
+- Workspace registration/login with JWT access tokens and rotating refresh sessions
+- Tenant-scoped customers, jobs, estimates, and invoices
+- Dashboard metrics backed by live customer/job/invoice data
+- Customer profiles with recent jobs and revenue summaries
+- Jobs and schedule views for dispatch-style operations
+- Estimates/invoices workflow, including estimate-to-invoice conversion and paid/open revenue tracking
+- PostgreSQL migrations through Alembic, with row-level security enabled on app tables
+- Render-ready API deployment and Netlify-compatible web configuration
+
+## Tech stack
 
 - `apps/api` — FastAPI, SQLAlchemy 2, PostgreSQL, Alembic, JWT auth, tenant-scoped models
 - `apps/web` — Next.js App Router, TypeScript, Tailwind CSS, responsive product shell
-- PostgreSQL, Redis, Celery, and both applications run through Docker Compose
+- Infrastructure — PostgreSQL, Redis, Celery, Docker Compose, Render, Supabase Postgres
 - Architecture decisions and the delivery roadmap live in `docs/`
 
 ## Start locally
@@ -21,16 +34,44 @@ Apply migrations with:
 docker compose exec api alembic upgrade head
 ```
 
-## Current scope
+## Demo data
 
-This foundation implements the company/user identity boundary, secure browser sessions, registration and login, rotating refresh tokens, role-based authorization, tenant-safe data model conventions, health endpoints, background-worker wiring, and the initial operator dashboard shell. Customer, job, scheduling, and technician workflows are the next vertical slices.
+After the API is running and migrations are applied, seed a local demo workspace:
+
+```bash
+make demo-seed
+```
+
+Demo login:
+
+```text
+Email: demo@crewpilot.local
+Password: CrewPilotDemo2026
+```
+
+The seed script creates a realistic workspace with customers, scheduled jobs, estimates, invoices, and paid/open revenue. It is idempotent for the demo company: rerunning it replaces the demo business records instead of duplicating them.
+
+Safety note: the seed script refuses to run when `ENVIRONMENT=production` unless `CREWPILOT_ALLOW_PRODUCTION_SEED=true` is explicitly set.
 
 ## Deploy
 
-The Next.js frontend is configured for Netlify with `netlify.toml`. The FastAPI backend, PostgreSQL, and Redis should be deployed separately.
+The current production shape uses:
+
+- Render for the FastAPI backend
+- Supabase Postgres for the database
+- Netlify-compatible frontend configuration via `netlify.toml`
 
 See `docs/deployment.md` for the Netlify settings and backend environment variables.
+
+Render runs Alembic migrations on deploy through `apps/api/docker-entrypoint.sh`.
 
 ## Workflow
 
 CrewPilot OS ships in small vertical slices. See `docs/workflows.md` for what should be handled manually, what Codex can automate, and how each feature should move from local changes to production validation.
+
+## Next product slices
+
+- Technician/team management
+- Job assignment using real technician records
+- Analytics page for revenue, jobs, conversion, and customer trends
+- AI-assisted call intake, follow-up, and workflow automation
