@@ -20,10 +20,12 @@ type Customer = {
   email: string | null;
 };
 
+type TechnicianStatus = "available" | "on_job" | "off_today";
+
 type Technician = {
   id: string;
   name: string;
-  status: "available" | "on_job" | "off_today";
+  status: TechnicianStatus;
   skills: string[];
 };
 
@@ -290,12 +292,57 @@ export default function JobsPage() {
         return;
       }
       const updated = result as Job;
-      setJobs((current) => current.map((currentJob) => (currentJob.id === updated.id ? updated : currentJob)));
+      const nextJobs = jobs.map((currentJob) => (currentJob.id === updated.id ? updated : currentJob));
+      setJobs(nextJobs);
       setSelectedId(updated.id);
+      await syncTechnicianAvailability(job, status, nextJobs);
     } catch {
       setError("CrewPilot OS could not move this job.");
     } finally {
       setWorkflowUpdatingId(null);
+    }
+  }
+
+  async function syncTechnicianAvailability(job: Job, nextStatus: JobStatus, nextJobs: Job[]) {
+    if (!job.technician_id) return;
+
+    const technician = technicianById.get(job.technician_id);
+    if (!technician) return;
+
+    let nextTechnicianStatus: TechnicianStatus | null = null;
+    if (nextStatus === "in_progress") {
+      nextTechnicianStatus = "on_job";
+    } else if (technician.status === "on_job") {
+      const hasOtherInProgressJob = nextJobs.some(
+        (candidate) =>
+          candidate.id !== job.id &&
+          candidate.technician_id === technician.id &&
+          candidate.status === "in_progress",
+      );
+      nextTechnicianStatus = hasOtherInProgressJob ? null : "available";
+    }
+
+    if (!nextTechnicianStatus || nextTechnicianStatus === technician.status) return;
+
+    try {
+      const response = await fetch(`/api/technicians/${technician.id}`, {
+        body: JSON.stringify({ status: nextTechnicianStatus }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, "Job moved, but technician availability could not be updated."));
+        return;
+      }
+      const updatedTechnician = result as Technician;
+      setTechnicians((current) =>
+        current.map((currentTechnician) =>
+          currentTechnician.id === updatedTechnician.id ? updatedTechnician : currentTechnician,
+        ),
+      );
+    } catch {
+      setError("Job moved, but CrewPilot OS could not update technician availability.");
     }
   }
 
