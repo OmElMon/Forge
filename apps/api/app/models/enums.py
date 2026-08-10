@@ -26,3 +26,17 @@ class JobStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELED = "canceled"
+
+
+class InvoiceType(StrEnum):
+    ESTIMATE = "estimate"
+    INVOICE = "invoice"
+
+
+class InvoiceStatus(StrEnum):
+    DRAFT = "draft"
+    SENT = "sent"
+    APPROVED = "approved"
+    CONVERTED = "converted"
+    PAID = "paid"
+    VOID = "void"
