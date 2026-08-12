@@ -25,6 +25,7 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.invoice import Invoice
+from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
 from app.models.membership import Membership
 from app.models.technician import Technician
@@ -262,6 +263,47 @@ async def _replace_demo_business_data(company: Company) -> None:
             ),
         ]
         db.add_all(invoices)
+        await db.flush()
+        invoice_by_title = {invoice.title: invoice for invoice in invoices}
+        db.add_all(
+            [
+                InvoiceLineItem(
+                    invoice_id=invoice_by_title["Furnace replacement estimate"].id,
+                    description="High-efficiency furnace package",
+                    quantity=1,
+                    unit_amount_cents=784000,
+                    sort_order=1,
+                ),
+                InvoiceLineItem(
+                    invoice_id=invoice_by_title["Furnace replacement estimate"].id,
+                    description="Install labor, permit, and disposal",
+                    quantity=1,
+                    unit_amount_cents=200000,
+                    sort_order=2,
+                ),
+                InvoiceLineItem(
+                    invoice_id=invoice_by_title["Smart thermostat estimate"].id,
+                    description="Smart thermostat and installation",
+                    quantity=1,
+                    unit_amount_cents=42600,
+                    sort_order=1,
+                ),
+                InvoiceLineItem(
+                    invoice_id=invoice_by_title["Emergency AC diagnostic"].id,
+                    description="Emergency diagnostic visit",
+                    quantity=1,
+                    unit_amount_cents=18900,
+                    sort_order=1,
+                ),
+                InvoiceLineItem(
+                    invoice_id=invoice_by_title["Seasonal maintenance visit"].id,
+                    description="Seasonal maintenance service",
+                    quantity=1,
+                    unit_amount_cents=24900,
+                    sort_order=1,
+                ),
+            ]
+        )
         await db.commit()
 
 

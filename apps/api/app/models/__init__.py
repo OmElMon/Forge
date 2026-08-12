@@ -2,6 +2,7 @@ from app.models.audit import AuditLog
 from app.models.company import Company
 from app.models.customer import Customer
 from app.models.invoice import Invoice
+from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
 from app.models.membership import Membership
 from app.models.session import RefreshSession
@@ -13,6 +14,7 @@ __all__ = [
     "Company",
     "Customer",
     "Invoice",
+    "InvoiceLineItem",
     "Job",
     "Membership",
     "RefreshSession",

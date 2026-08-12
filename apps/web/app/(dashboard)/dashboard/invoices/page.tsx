@@ -11,6 +11,7 @@ import {
   ReceiptText,
   Search,
   Send,
+  Trash2,
   UserRound,
 } from "lucide-react";
 
@@ -34,6 +35,17 @@ type Invoice = {
   amount_cents: number;
   due_at: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type InvoiceLineItem = {
+  id: string;
+  invoice_id: string;
+  description: string;
+  quantity: number;
+  unit_amount_cents: number;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 };
@@ -107,6 +119,15 @@ function invoicePayload(form: FormData) {
   };
 }
 
+function lineItemPayload(form: FormData, sortOrder = 0) {
+  return {
+    description: form.get("description"),
+    quantity: Math.max(1, Number.parseInt(String(form.get("quantity") ?? "1"), 10) || 1),
+    sort_order: sortOrder,
+    unit_amount_cents: centsFromInput(form.get("unit_amount")),
+  };
+}
+
 function formatMoney(cents: number) {
   return new Intl.NumberFormat(undefined, {
     currency: "USD",
@@ -131,9 +152,13 @@ function dateInputValue(value: string | null) {
 export default function InvoicesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
+  const [lineItemsInvoiceId, setLineItemsInvoiceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [lineSaving, setLineSaving] = useState(false);
+  const [lineUpdatingId, setLineUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -176,6 +201,30 @@ export default function InvoicesPage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  async function loadLineItems(invoiceId: string) {
+    setLineItemsInvoiceId(invoiceId);
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/line-items`, { cache: "no-store" });
+      const payload = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(payload, "Unable to load line items."));
+        return;
+      }
+      setLineItems(payload as InvoiceLineItem[]);
+    } catch {
+      setError("CrewPilot OS could not load invoice line items.");
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      setLineItems([]);
+      setLineItemsInvoiceId(null);
+      return;
+    }
+    void loadLineItems(selectedInvoice.id);
+  }, [selectedInvoice?.id]);
 
   const filteredInvoices = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -292,6 +341,103 @@ export default function InvoicesPage() {
     }
   }
 
+  function syncInvoiceTotal(invoiceId: string, nextLineItems: InvoiceLineItem[]) {
+    const nextTotal = nextLineItems.reduce(
+      (total, item) => total + item.quantity * item.unit_amount_cents,
+      0,
+    );
+    setInvoices((current) =>
+      current.map((invoice) =>
+        invoice.id === invoiceId ? { ...invoice, amount_cents: nextTotal } : invoice,
+      ),
+    );
+  }
+
+  async function createLineItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedInvoice) return;
+
+    setLineSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items`, {
+        body: JSON.stringify(lineItemPayload(form, lineItems.length + 1)),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to add line item. Status ${response.status}.`));
+        return;
+      }
+      const created = result as InvoiceLineItem;
+      event.currentTarget.reset();
+      const nextLineItems = [...lineItems, created].sort((a, b) => a.sort_order - b.sort_order);
+      setLineItems(nextLineItems);
+      syncInvoiceTotal(selectedInvoice.id, nextLineItems);
+    } catch {
+      setError("CrewPilot OS could not add this line item.");
+    } finally {
+      setLineSaving(false);
+    }
+  }
+
+  async function updateLineItem(event: FormEvent<HTMLFormElement>, lineItem: InvoiceLineItem) {
+    event.preventDefault();
+    if (!selectedInvoice) return;
+
+    setLineUpdatingId(lineItem.id);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
+        body: JSON.stringify(lineItemPayload(form, lineItem.sort_order)),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to update line item. Status ${response.status}.`));
+        return;
+      }
+      const updated = result as InvoiceLineItem;
+      const nextLineItems = lineItems
+        .map((item) => (item.id === updated.id ? updated : item))
+        .sort((a, b) => a.sort_order - b.sort_order);
+      setLineItems(nextLineItems);
+      syncInvoiceTotal(selectedInvoice.id, nextLineItems);
+    } catch {
+      setError("CrewPilot OS could not update this line item.");
+    } finally {
+      setLineUpdatingId(null);
+    }
+  }
+
+  async function deleteLineItem(lineItem: InvoiceLineItem) {
+    if (!selectedInvoice) return;
+
+    setLineUpdatingId(lineItem.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const result = await readApiResponse(response);
+        setError(errorMessage(result, `Unable to delete line item. Status ${response.status}.`));
+        return;
+      }
+      const nextLineItems = lineItems.filter((item) => item.id !== lineItem.id);
+      setLineItems(nextLineItems);
+      syncInvoiceTotal(selectedInvoice.id, nextLineItems);
+    } catch {
+      setError("CrewPilot OS could not delete this line item.");
+    } finally {
+      setLineUpdatingId(null);
+    }
+  }
+
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <section>
@@ -399,6 +545,95 @@ export default function InvoicesPage() {
               <p className="text-2xl font-semibold text-gray-950">{formatMoney(selectedInvoice.amount_cents)}</p>
               <p>Due: {formatDate(selectedInvoice.due_at)}</p>
               <p>{selectedInvoice.notes || "No invoice notes yet."}</p>
+            </div>
+
+            <div className="mt-5 border-t pt-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Line items</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Labor, materials, and fees that make up the total.
+                  </p>
+                </div>
+                <p className="text-xs font-semibold text-gray-600">
+                  {lineItemsInvoiceId === selectedInvoice.id ? lineItems.length : "…"} rows
+                </p>
+              </div>
+
+              {lineItemsInvoiceId !== selectedInvoice.id ? (
+                <div className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">
+                  Loading line items…
+                </div>
+              ) : lineItems.length === 0 ? (
+                <div className="mt-4 rounded-lg border border-dashed p-3 text-sm text-gray-500">
+                  No line items yet. Add labor or materials below.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {lineItems.map((lineItem) => (
+                    <form
+                      key={lineItem.id}
+                      onSubmit={(event) => updateLineItem(event, lineItem)}
+                      className="rounded-lg border p-3"
+                    >
+                      <label className="block text-xs font-medium text-gray-500">
+                        Description
+                        <input name="description" required minLength={2} defaultValue={lineItem.description} className="mt-1 h-9 w-full rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                      </label>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-[90px_1fr]">
+                        <label className="block text-xs font-medium text-gray-500">
+                          Qty
+                          <input name="quantity" type="number" min="1" required defaultValue={lineItem.quantity} className="mt-1 h-9 w-full rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                        </label>
+                        <label className="block text-xs font-medium text-gray-500">
+                          Unit amount
+                          <input name="unit_amount" type="number" min="0" step="0.01" required defaultValue={(lineItem.unit_amount_cents / 100).toFixed(2)} className="mt-1 h-9 w-full rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold">
+                          {formatMoney(lineItem.quantity * lineItem.unit_amount_cents)}
+                        </p>
+                        <div className="flex gap-2">
+                          <button disabled={lineUpdatingId === lineItem.id} className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-60">
+                            {lineUpdatingId === lineItem.id ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={lineUpdatingId === lineItem.id}
+                            onClick={() => deleteLineItem(lineItem)}
+                            className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={createLineItem} className="mt-4 rounded-lg bg-gray-50 p-3">
+                <h4 className="text-sm font-semibold">Add line item</h4>
+                <label className="mt-3 block text-xs font-medium text-gray-500">
+                  Description
+                  <input name="description" required minLength={2} className="mt-1 h-9 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Diagnostic labor" />
+                </label>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[90px_1fr]">
+                  <label className="block text-xs font-medium text-gray-500">
+                    Qty
+                    <input name="quantity" type="number" min="1" required defaultValue="1" className="mt-1 h-9 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  </label>
+                  <label className="block text-xs font-medium text-gray-500">
+                    Unit amount
+                    <input name="unit_amount" type="number" min="0" step="0.01" required className="mt-1 h-9 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="189.00" />
+                  </label>
+                </div>
+                <button disabled={lineSaving} className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-xs font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {lineSaving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                  Add item
+                </button>
+              </form>
             </div>
 
             {selectedInvoice.document_type === "estimate" && (
