@@ -2,7 +2,6 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  ArrowRightLeft,
   CheckCircle2,
   CircleDollarSign,
   FileText,
@@ -50,6 +49,12 @@ type InvoiceLineItem = {
   updated_at: string;
 };
 
+type RevenueAction = {
+  label: string;
+  patch: Partial<Pick<Invoice, "document_type" | "status">>;
+  tone?: "default" | "primary" | "danger";
+};
+
 const statusStyles: Record<InvoiceStatus, string> = {
   approved: "bg-blue-50 text-blue-700",
   converted: "bg-violet-50 text-violet-700",
@@ -72,6 +77,64 @@ const typeLabels: Record<InvoiceType, string> = {
   estimate: "Estimate",
   invoice: "Invoice",
 };
+
+function revenueActionsFor(invoice: Invoice): RevenueAction[] {
+  if (invoice.status === "void") {
+    return [{ label: "Reopen as draft", patch: { status: "draft" } }];
+  }
+
+  if (invoice.document_type === "estimate") {
+    if (invoice.status === "draft") {
+      return [
+        { label: "Send estimate", patch: { status: "sent" }, tone: "primary" },
+        { label: "Void estimate", patch: { status: "void" }, tone: "danger" },
+      ];
+    }
+
+    if (invoice.status === "sent") {
+      return [
+        { label: "Approve estimate", patch: { status: "approved" }, tone: "primary" },
+        { label: "Void estimate", patch: { status: "void" }, tone: "danger" },
+      ];
+    }
+
+    if (invoice.status === "approved") {
+      return [
+        {
+          label: "Convert to invoice",
+          patch: { document_type: "invoice", status: "sent" },
+          tone: "primary",
+        },
+      ];
+    }
+
+    if (invoice.status === "converted") {
+      return [{ label: "Reopen as draft", patch: { status: "draft" } }];
+    }
+  }
+
+  if (invoice.document_type === "invoice") {
+    if (invoice.status === "draft") {
+      return [
+        { label: "Send invoice", patch: { status: "sent" }, tone: "primary" },
+        { label: "Void invoice", patch: { status: "void" }, tone: "danger" },
+      ];
+    }
+
+    if (invoice.status === "sent") {
+      return [
+        { label: "Mark paid", patch: { status: "paid" }, tone: "primary" },
+        { label: "Void invoice", patch: { status: "void" }, tone: "danger" },
+      ];
+    }
+
+    if (invoice.status === "paid") {
+      return [{ label: "Reopen as sent", patch: { status: "sent" } }];
+    }
+  }
+
+  return [];
+}
 
 async function readApiResponse(response: Response) {
   const text = await response.text();
@@ -159,7 +222,9 @@ export default function InvoicesPage() {
   const [updating, setUpdating] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
   const [lineUpdatingId, setLineUpdatingId] = useState<string | null>(null);
+  const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedId) ?? invoices[0] ?? null;
@@ -260,6 +325,7 @@ export default function InvoicesPage() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setNotice("");
     const form = new FormData(event.currentTarget);
 
     try {
@@ -277,6 +343,7 @@ export default function InvoicesPage() {
       event.currentTarget.reset();
       setInvoices((current) => [invoice, ...current]);
       setSelectedId(invoice.id);
+      setNotice(`${typeLabels[invoice.document_type]} created as ${statusLabels[invoice.status].toLowerCase()}.`);
     } catch {
       setError("CrewPilot OS could not save this invoice.");
     } finally {
@@ -290,6 +357,7 @@ export default function InvoicesPage() {
 
     setUpdating(true);
     setError("");
+    setNotice("");
     const form = new FormData(event.currentTarget);
 
     try {
@@ -306,6 +374,7 @@ export default function InvoicesPage() {
       const updated = result as Invoice;
       setInvoices((current) => current.map((invoice) => (invoice.id === updated.id ? updated : invoice)));
       setSelectedId(updated.id);
+      setNotice(`${typeLabels[updated.document_type]} updated.`);
     } catch {
       setError("CrewPilot OS could not update this invoice.");
     } finally {
@@ -313,31 +382,29 @@ export default function InvoicesPage() {
     }
   }
 
-  async function convertEstimate() {
-    if (!selectedInvoice) return;
-    setUpdating(true);
+  async function updateRevenueWorkflow(invoice: Invoice, action: RevenueAction) {
+    setWorkflowUpdatingId(invoice.id);
     setError("");
+    setNotice("");
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice.id}`, {
-        body: JSON.stringify({
-          document_type: "invoice",
-          status: "sent",
-        }),
+      const response = await fetch(`/api/invoices/${invoice.id}`, {
+        body: JSON.stringify(action.patch),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
       const result = await readApiResponse(response);
       if (!response.ok) {
-        setError(errorMessage(result, `Unable to convert estimate. Status ${response.status}.`));
+        setError(errorMessage(result, `Unable to update workflow. Status ${response.status}.`));
         return;
       }
       const updated = result as Invoice;
       setInvoices((current) => current.map((invoice) => (invoice.id === updated.id ? updated : invoice)));
       setSelectedId(updated.id);
+      setNotice(`${typeLabels[updated.document_type]} moved to ${statusLabels[updated.status].toLowerCase()}.`);
     } catch {
-      setError("CrewPilot OS could not convert this estimate.");
+      setError("CrewPilot OS could not update this workflow.");
     } finally {
-      setUpdating(false);
+      setWorkflowUpdatingId(null);
     }
   }
 
@@ -467,6 +534,7 @@ export default function InvoicesPage() {
         </div>
 
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
+        {notice && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{notice}</p>}
 
         <div className="mt-6 overflow-hidden rounded-xl border bg-white shadow-panel">
           <div className="flex items-center justify-between border-b px-5 py-4">
@@ -636,16 +704,11 @@ export default function InvoicesPage() {
               </form>
             </div>
 
-            {selectedInvoice.document_type === "estimate" && (
-              <button
-                disabled={updating}
-                onClick={convertEstimate}
-                className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <ArrowRightLeft className="size-4" />
-                Convert estimate to invoice
-              </button>
-            )}
+            <RevenueActions
+              disabled={workflowUpdatingId === selectedInvoice.id}
+              invoice={selectedInvoice}
+              onRun={(action) => updateRevenueWorkflow(selectedInvoice, action)}
+            />
 
             <form key={selectedInvoice.id} onSubmit={updateInvoice} className="mt-5 space-y-4 border-t pt-5">
               <div className="flex items-center justify-between">
@@ -706,6 +769,50 @@ function EmptyState({ icon: Icon, title, body }: { icon: typeof CircleDollarSign
       </div>
       <h3 className="mt-4 font-semibold">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-gray-500">{body}</p>
+    </div>
+  );
+}
+
+function RevenueActions({
+  disabled,
+  invoice,
+  onRun,
+}: {
+  disabled: boolean;
+  invoice: Invoice;
+  onRun: (action: RevenueAction) => void;
+}) {
+  const actions = revenueActionsFor(invoice);
+  if (actions.length === 0) return null;
+
+  return (
+    <div className="mt-5 border-t pt-5">
+      <div>
+        <h3 className="font-semibold">Workflow actions</h3>
+        <p className="mt-0.5 text-xs text-gray-500">Move this record through the money pipeline.</p>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {actions.map((action) => {
+          const style =
+            action.tone === "primary"
+              ? "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+              : action.tone === "danger"
+                ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50";
+
+          return (
+            <button
+              key={action.label}
+              type="button"
+              disabled={disabled}
+              onClick={() => onRun(action)}
+              className={`flex h-10 w-full items-center justify-center rounded-lg border text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${style}`}
+            >
+              {disabled ? "Updating…" : action.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
