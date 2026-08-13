@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   BriefcaseBusiness,
   CalendarPlus,
   CircleDollarSign,
   Clock3,
+  FileText,
   LoaderCircle,
-  PhoneMissed,
   Plus,
+  ReceiptText,
   UsersRound,
 } from "lucide-react";
 
@@ -96,6 +98,12 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function isPastDue(value: string | null, now: Date) {
+  if (!value) return false;
+  const dueDate = new Date(value);
+  return dueDate < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -147,28 +155,71 @@ export default function DashboardPage() {
     .filter((job) => job.scheduled_start && dateKey(new Date(job.scheduled_start)) === dateKey(today))
     .sort((a, b) => new Date(a.scheduled_start!).getTime() - new Date(b.scheduled_start!).getTime());
   const openJobs = jobs.filter((job) => !["completed", "canceled"].includes(job.status));
-  const completedJobs = jobs.filter((job) => job.status === "completed");
+  const unscheduledJobs = openJobs.filter((job) => !job.scheduled_start);
   const unassignedJobs = openJobs.filter((job) => !job.technician_id && !job.technician_name);
   const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
   const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
+  const openInvoices = invoices.filter(
+    (invoice) => invoice.document_type === "invoice" && !["paid", "void"].includes(invoice.status),
+  );
+  const openEstimates = invoices.filter(
+    (invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status),
+  );
   const paidRevenueCents = invoices
     .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const openInvoiceCents = invoices
-    .filter((invoice) => invoice.document_type === "invoice" && !["paid", "void"].includes(invoice.status))
-    .reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const openEstimateCents = invoices
-    .filter((invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status))
-    .reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const approvalQueue = invoices.filter(
+  const openInvoiceCents = openInvoices.reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const openEstimateCents = openEstimates.reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const revenueAtRiskCents = openInvoiceCents + openEstimateCents;
+  const overdueInvoices = openInvoices.filter((invoice) => isPastDue(invoice.due_at, today));
+  const approvalQueue = openEstimates.filter(
     (invoice) => invoice.document_type === "estimate" && ["sent", "approved"].includes(invoice.status),
   );
+  const attentionItems = [
+    {
+      action: "Review estimates",
+      body: `${formatMoney(openEstimateCents)} in quoted work needs follow-up or conversion.`,
+      count: approvalQueue.length,
+      href: "/dashboard/invoices",
+      icon: FileText,
+      label: "Estimates awaiting decision",
+      tone: "orange",
+    },
+    {
+      action: "Collect payment",
+      body: `${formatMoney(openInvoiceCents)} is still open across unpaid invoices.`,
+      count: openInvoices.length,
+      href: "/dashboard/invoices",
+      icon: ReceiptText,
+      label: "Open invoices",
+      tone: "rose",
+    },
+    {
+      action: "Schedule jobs",
+      body: "Jobs without a scheduled time are harder to dispatch and invoice.",
+      count: unscheduledJobs.length,
+      href: "/dashboard/jobs",
+      icon: Clock3,
+      label: "Jobs missing schedule",
+      tone: "amber",
+    },
+    {
+      action: "Assign techs",
+      body: "Unassigned jobs can slip when the day gets busy.",
+      count: unassignedJobs.length,
+      href: "/dashboard/jobs",
+      icon: BriefcaseBusiness,
+      label: "Jobs needing assignment",
+      tone: "blue",
+    },
+  ];
+  const highestPriorityItems = attentionItems.filter((item) => item.count > 0);
 
   const metrics = [
     { label: "Paid revenue", value: formatMoney(paidRevenueCents), note: "Collected invoices" },
     { label: "Open invoices", value: formatMoney(openInvoiceCents), note: "Awaiting payment" },
-    { label: "Open estimates", value: formatMoney(openEstimateCents), note: `${approvalQueue.length} awaiting decision` },
-    { label: "Open jobs", value: openJobs.length.toLocaleString(), note: `${todayJobs.length} scheduled today` },
+    { label: "Revenue at risk", value: formatMoney(revenueAtRiskCents), note: "Open estimates + invoices" },
+    { label: "Open jobs", value: openJobs.length.toLocaleString(), note: `${todayJobs.length} today · ${unscheduledJobs.length} unscheduled` },
   ];
 
   return (
@@ -180,7 +231,7 @@ export default function DashboardPage() {
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Good morning, Moe</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Here’s what’s happening across your business today.
+            Your owner command center for jobs, dispatch, estimates, invoices, and revenue recovery.
           </p>
         </div>
         <div className="flex gap-2">
@@ -280,35 +331,66 @@ export default function DashboardPage() {
             </div>
           </article>
           <article className="rounded-xl border bg-white p-5 shadow-panel">
-            <h2 className="font-semibold">Needs attention</h2>
-            <div className="mt-4 space-y-4">
-              <div className="flex gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-rose-50 text-rose-600">
-                  <PhoneMissed className="size-4" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold">Missed calls placeholder</p>
-                  <p className="text-xs text-gray-500">Phone integration comes later.</p>
-                </div>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Revenue recovery queue</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  The work most likely to leak money or momentum.
+                </p>
               </div>
-              <div className="flex gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600">
-                  <Clock3 className="size-4" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold">{unassignedJobs.length} jobs need assignment</p>
-                  <p className="text-xs text-gray-500">Assign a technician from the Jobs page.</p>
+              <span className="grid size-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
+                <AlertTriangle className="size-4" />
+              </span>
+            </div>
+            <div className="mt-4 rounded-xl bg-orange-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">At-risk revenue</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-950">{loading ? "—" : formatMoney(revenueAtRiskCents)}</p>
+              <p className="mt-1 text-xs text-orange-800">
+                {openEstimates.length} open estimates · {openInvoices.length} open invoices · {overdueInvoices.length} overdue
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {loading ? (
+                <div className="flex h-32 items-center justify-center text-sm text-gray-500">
+                  <LoaderCircle className="mr-2 size-4 animate-spin" />
+                  Building attention queue…
                 </div>
-              </div>
-              <div className="flex gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-orange-50 text-orange-600">
-                  <CircleDollarSign className="size-4" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold">{approvalQueue.length} estimates awaiting follow-up</p>
-                  <p className="text-xs text-gray-500">{formatMoney(openEstimateCents)} in open quoted work.</p>
+              ) : highestPriorityItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-gray-500">
+                  Clean board. No open revenue or scheduling issues need attention right now.
                 </div>
-              </div>
+              ) : (
+                highestPriorityItems.map((item) => (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className="flex gap-3 rounded-xl border p-3 transition hover:border-orange-200 hover:bg-orange-50/50"
+                  >
+                    <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${
+                      item.tone === "rose"
+                        ? "bg-rose-50 text-rose-600"
+                        : item.tone === "amber"
+                          ? "bg-amber-50 text-amber-600"
+                          : item.tone === "blue"
+                            ? "bg-blue-50 text-blue-600"
+                            : "bg-orange-50 text-orange-600"
+                    }`}>
+                      <item.icon className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold">{item.label}</span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                          {item.count}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-gray-500">{item.body}</span>
+                      <span className="mt-2 block text-xs font-semibold text-orange-600">{item.action} →</span>
+                    </span>
+                  </Link>
+                ))
+              )}
             </div>
           </article>
         </div>
