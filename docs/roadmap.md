@@ -7,4 +7,4 @@
 5. Dashboard slice — operational metrics, workload, revenue-ready event model.
 6. Production hardening — rate limits, RLS defense in depth, observability, backups, deployment manifests.
 
-Each slice should ship API contracts, migrations, authorization tests, service tests, and responsive UI states together.
+Each slice should ship the smallest safe product increment. Backend-first slices are acceptable when they reduce production risk, preserve Netlify credits, or create the workflow foundation for a later UI pass. User-facing milestones should still include responsive UI states before they are treated as demo-ready.
