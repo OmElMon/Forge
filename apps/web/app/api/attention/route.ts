@@ -1,0 +1,35 @@
+import { type NextRequest, NextResponse } from "next/server";
+
+import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+
+function authHeaders(request: NextRequest) {
+  const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  if (!accessToken) return null;
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const headers = authHeaders(request);
+  if (!headers) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  const limit = request.nextUrl.searchParams.get("limit");
+  const path = limit ? `/attention?limit=${encodeURIComponent(limit)}` : "/attention";
+
+  try {
+    const upstream = await fetch(apiUrl(path), {
+      cache: "no-store",
+      headers,
+    });
+    if (!upstream.ok) {
+      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
+    }
+    return NextResponse.json(await upstream.json());
+  } catch {
+    return NextResponse.json({ error: "Unable to reach the attention queue service." }, { status: 503 });
+  }
+}
