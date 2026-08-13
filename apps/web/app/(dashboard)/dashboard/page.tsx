@@ -51,6 +51,40 @@ type Invoice = {
   due_at: string | null;
 };
 
+type AttentionCategory =
+  | "estimate_follow_up"
+  | "invoice_collection"
+  | "job_scheduling"
+  | "job_assignment"
+  | "job_invoicing";
+
+type AttentionItem = {
+  category: AttentionCategory;
+  priority: "urgent" | "high" | "medium";
+  title: string;
+  description: string;
+  action_label: string;
+  action_href: string;
+  source_type: "invoice" | "job";
+  source_id: string;
+  customer_id: string;
+  customer_name: string;
+  amount_cents: number;
+  due_at: string | null;
+  created_at: string;
+};
+
+type AttentionSummary = {
+  revenue_at_risk_cents: number;
+  open_estimate_cents: number;
+  open_invoice_cents: number;
+  overdue_invoice_count: number;
+  unscheduled_job_count: number;
+  unassigned_job_count: number;
+  completed_uninvoiced_job_count: number;
+  items: AttentionItem[];
+};
+
 const statusStyles: Record<JobStatus, string> = {
   canceled: "bg-rose-50 text-rose-700",
   completed: "bg-emerald-50 text-emerald-700",
@@ -98,17 +132,39 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
-function isPastDue(value: string | null, now: Date) {
-  if (!value) return false;
-  const dueDate = new Date(value);
-  return dueDate < new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
+const attentionIconByCategory: Record<AttentionCategory, typeof FileText> = {
+  estimate_follow_up: FileText,
+  invoice_collection: ReceiptText,
+  job_assignment: BriefcaseBusiness,
+  job_invoicing: CircleDollarSign,
+  job_scheduling: Clock3,
+};
+
+const attentionToneByCategory: Record<AttentionCategory, string> = {
+  estimate_follow_up: "bg-orange-50 text-orange-600",
+  invoice_collection: "bg-rose-50 text-rose-600",
+  job_assignment: "bg-blue-50 text-blue-600",
+  job_invoicing: "bg-emerald-50 text-emerald-600",
+  job_scheduling: "bg-amber-50 text-amber-600",
+};
+
+const emptyAttentionSummary: AttentionSummary = {
+  completed_uninvoiced_job_count: 0,
+  items: [],
+  open_estimate_cents: 0,
+  open_invoice_cents: 0,
+  overdue_invoice_count: 0,
+  revenue_at_risk_cents: 0,
+  unassigned_job_count: 0,
+  unscheduled_job_count: 0,
+};
 
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [attentionSummary, setAttentionSummary] = useState<AttentionSummary>(emptyAttentionSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -117,17 +173,31 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const [customersResponse, jobsResponse, invoicesResponse, techniciansResponse] = await Promise.all([
+        const [
+          customersResponse,
+          jobsResponse,
+          invoicesResponse,
+          techniciansResponse,
+          attentionResponse,
+        ] = await Promise.all([
           fetch("/api/customers", { cache: "no-store" }),
           fetch("/api/jobs", { cache: "no-store" }),
           fetch("/api/invoices", { cache: "no-store" }),
           fetch("/api/technicians", { cache: "no-store" }),
+          fetch("/api/attention?limit=6", { cache: "no-store" }),
         ]);
         const customersPayload = await readApiResponse(customersResponse);
         const jobsPayload = await readApiResponse(jobsResponse);
         const invoicesPayload = await readApiResponse(invoicesResponse);
         const techniciansPayload = await readApiResponse(techniciansResponse);
-        if (!customersResponse.ok || !jobsResponse.ok || !invoicesResponse.ok || !techniciansResponse.ok) {
+        const attentionPayload = await readApiResponse(attentionResponse);
+        if (
+          !customersResponse.ok ||
+          !jobsResponse.ok ||
+          !invoicesResponse.ok ||
+          !techniciansResponse.ok ||
+          !attentionResponse.ok
+        ) {
           setError("CrewPilot OS could not load the latest operations data.");
           return;
         }
@@ -135,6 +205,7 @@ export default function DashboardPage() {
         setJobs(jobsPayload as Job[]);
         setInvoices(invoicesPayload as Invoice[]);
         setTechnicians(techniciansPayload as Technician[]);
+        setAttentionSummary(attentionPayload as AttentionSummary);
       } catch {
         setError("CrewPilot OS could not reach the operations service.");
       } finally {
@@ -155,71 +226,22 @@ export default function DashboardPage() {
     .filter((job) => job.scheduled_start && dateKey(new Date(job.scheduled_start)) === dateKey(today))
     .sort((a, b) => new Date(a.scheduled_start!).getTime() - new Date(b.scheduled_start!).getTime());
   const openJobs = jobs.filter((job) => !["completed", "canceled"].includes(job.status));
-  const unscheduledJobs = openJobs.filter((job) => !job.scheduled_start);
   const unassignedJobs = openJobs.filter((job) => !job.technician_id && !job.technician_name);
   const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
   const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
-  const openInvoices = invoices.filter(
-    (invoice) => invoice.document_type === "invoice" && !["paid", "void"].includes(invoice.status),
-  );
-  const openEstimates = invoices.filter(
-    (invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status),
-  );
   const paidRevenueCents = invoices
     .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const openInvoiceCents = openInvoices.reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const openEstimateCents = openEstimates.reduce((total, invoice) => total + invoice.amount_cents, 0);
-  const revenueAtRiskCents = openInvoiceCents + openEstimateCents;
-  const overdueInvoices = openInvoices.filter((invoice) => isPastDue(invoice.due_at, today));
-  const approvalQueue = openEstimates.filter(
-    (invoice) => invoice.document_type === "estimate" && ["sent", "approved"].includes(invoice.status),
-  );
-  const attentionItems = [
-    {
-      action: "Review estimates",
-      body: `${formatMoney(openEstimateCents)} in quoted work needs follow-up or conversion.`,
-      count: approvalQueue.length,
-      href: "/dashboard/invoices",
-      icon: FileText,
-      label: "Estimates awaiting decision",
-      tone: "orange",
-    },
-    {
-      action: "Collect payment",
-      body: `${formatMoney(openInvoiceCents)} is still open across unpaid invoices.`,
-      count: openInvoices.length,
-      href: "/dashboard/invoices",
-      icon: ReceiptText,
-      label: "Open invoices",
-      tone: "rose",
-    },
-    {
-      action: "Schedule jobs",
-      body: "Jobs without a scheduled time are harder to dispatch and invoice.",
-      count: unscheduledJobs.length,
-      href: "/dashboard/jobs",
-      icon: Clock3,
-      label: "Jobs missing schedule",
-      tone: "amber",
-    },
-    {
-      action: "Assign techs",
-      body: "Unassigned jobs can slip when the day gets busy.",
-      count: unassignedJobs.length,
-      href: "/dashboard/jobs",
-      icon: BriefcaseBusiness,
-      label: "Jobs needing assignment",
-      tone: "blue",
-    },
-  ];
-  const highestPriorityItems = attentionItems.filter((item) => item.count > 0);
 
   const metrics = [
     { label: "Paid revenue", value: formatMoney(paidRevenueCents), note: "Collected invoices" },
-    { label: "Open invoices", value: formatMoney(openInvoiceCents), note: "Awaiting payment" },
-    { label: "Revenue at risk", value: formatMoney(revenueAtRiskCents), note: "Open estimates + invoices" },
-    { label: "Open jobs", value: openJobs.length.toLocaleString(), note: `${todayJobs.length} today · ${unscheduledJobs.length} unscheduled` },
+    { label: "Open invoices", value: formatMoney(attentionSummary.open_invoice_cents), note: "Awaiting payment" },
+    { label: "Revenue at risk", value: formatMoney(attentionSummary.revenue_at_risk_cents), note: "Open estimates + invoices" },
+    {
+      label: "Open jobs",
+      value: openJobs.length.toLocaleString(),
+      note: `${todayJobs.length} today · ${attentionSummary.unscheduled_job_count} unscheduled`,
+    },
   ];
 
   return (
@@ -344,11 +366,21 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 rounded-xl bg-orange-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">At-risk revenue</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-950">{loading ? "—" : formatMoney(revenueAtRiskCents)}</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-950">
+                {loading ? "—" : formatMoney(attentionSummary.revenue_at_risk_cents)}
+              </p>
               <p className="mt-1 text-xs text-orange-800">
-                {openEstimates.length} open estimates · {openInvoices.length} open invoices · {overdueInvoices.length} overdue
+                {formatMoney(attentionSummary.open_estimate_cents)} estimates ·{" "}
+                {formatMoney(attentionSummary.open_invoice_cents)} invoices ·{" "}
+                {attentionSummary.overdue_invoice_count} overdue
               </p>
             </div>
+            {!loading && attentionSummary.completed_uninvoiced_job_count > 0 ? (
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
+                {attentionSummary.completed_uninvoiced_job_count} completed job
+                {attentionSummary.completed_uninvoiced_job_count === 1 ? "" : "s"} ready to invoice.
+              </div>
+            ) : null}
 
             <div className="mt-4 space-y-3">
               {loading ? (
@@ -356,40 +388,42 @@ export default function DashboardPage() {
                   <LoaderCircle className="mr-2 size-4 animate-spin" />
                   Building attention queue…
                 </div>
-              ) : highestPriorityItems.length === 0 ? (
+              ) : attentionSummary.items.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-gray-500">
                   Clean board. No open revenue or scheduling issues need attention right now.
                 </div>
               ) : (
-                highestPriorityItems.map((item) => (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className="flex gap-3 rounded-xl border p-3 transition hover:border-orange-200 hover:bg-orange-50/50"
-                  >
-                    <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${
-                      item.tone === "rose"
-                        ? "bg-rose-50 text-rose-600"
-                        : item.tone === "amber"
-                          ? "bg-amber-50 text-amber-600"
-                          : item.tone === "blue"
-                            ? "bg-blue-50 text-blue-600"
-                            : "bg-orange-50 text-orange-600"
-                    }`}>
-                      <item.icon className="size-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">{item.label}</span>
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
-                          {item.count}
+                attentionSummary.items.map((item) => {
+                  const Icon = attentionIconByCategory[item.category];
+                  return (
+                    <Link
+                      key={`${item.source_type}-${item.source_id}-${item.category}`}
+                      href={item.action_href}
+                      className="flex gap-3 rounded-xl border p-3 transition hover:border-orange-200 hover:bg-orange-50/50"
+                    >
+                      <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${attentionToneByCategory[item.category]}`}>
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">{item.title}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold capitalize text-gray-700">
+                            {item.priority}
+                          </span>
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-gray-500">
+                          {item.description}
+                        </span>
+                        <span className="mt-2 flex items-center justify-between gap-2 text-xs">
+                          <span className="font-semibold text-orange-600">{item.action_label} →</span>
+                          {item.amount_cents > 0 ? (
+                            <span className="font-semibold text-gray-500">{formatMoney(item.amount_cents)}</span>
+                          ) : null}
                         </span>
                       </span>
-                      <span className="mt-1 block text-xs leading-5 text-gray-500">{item.body}</span>
-                      <span className="mt-2 block text-xs font-semibold text-orange-600">{item.action} →</span>
-                    </span>
-                  </Link>
-                ))
+                    </Link>
+                  );
+                })
               )}
             </div>
           </article>
