@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
+from app.models.enums import InvoiceStatus, InvoiceType
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
-from app.schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceUpdate
+from app.schemas.invoice import InvoiceConversionRead, InvoiceCreate, InvoiceRead, InvoiceUpdate
 from app.schemas.invoice_line_item import (
     InvoiceLineItemCreate,
     InvoiceLineItemRead,
@@ -19,6 +20,18 @@ from app.schemas.invoice_line_item import (
 from app.schemas.principal import Principal
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+
+def converted_invoice_title(estimate_title: str) -> str:
+    if "estimate" in estimate_title.lower():
+        return estimate_title.lower().replace("estimate", "invoice").title()
+    return f"{estimate_title} invoice"
+
+
+def append_workflow_note(existing_notes: str | None, note: str) -> str:
+    if not existing_notes:
+        return note
+    return f"{existing_notes.rstrip()}\n\n{note}"
 
 
 async def ensure_company_customer(
@@ -102,6 +115,43 @@ async def recalculate_invoice_total(invoice_id: UUID, db: AsyncSession) -> None:
         invoice.amount_cents = total_cents
 
 
+def ensure_invoice_transition(
+    invoice: Invoice,
+    *,
+    allowed_types: set[InvoiceType],
+    allowed_statuses: set[InvoiceStatus],
+    detail: str,
+) -> None:
+    if invoice.document_type not in allowed_types or invoice.status not in allowed_statuses:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+async def copy_invoice_line_items(
+    *,
+    source_invoice_id: UUID,
+    target_invoice_id: UUID,
+    db: AsyncSession,
+) -> None:
+    result = await db.execute(
+        select(InvoiceLineItem)
+        .where(InvoiceLineItem.invoice_id == source_invoice_id)
+        .order_by(InvoiceLineItem.sort_order.asc(), InvoiceLineItem.created_at.asc())
+    )
+    source_items = result.scalars().all()
+    db.add_all(
+        [
+            InvoiceLineItem(
+                invoice_id=target_invoice_id,
+                description=item.description,
+                quantity=item.quantity,
+                unit_amount_cents=item.unit_amount_cents,
+                sort_order=item.sort_order,
+            )
+            for item in source_items
+        ]
+    )
+
+
 @router.get("", response_model=list[InvoiceRead])
 async def list_invoices(
     customer_id: UUID | None = Query(default=None),
@@ -161,6 +211,102 @@ async def update_invoice(
     await db.commit()
     await db.refresh(invoice)
     return invoice
+
+
+@router.post("/{invoice_id}/send", response_model=InvoiceRead)
+async def send_invoice(
+    invoice_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Invoice:
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    ensure_invoice_transition(
+        invoice,
+        allowed_types={InvoiceType.ESTIMATE, InvoiceType.INVOICE},
+        allowed_statuses={InvoiceStatus.DRAFT},
+        detail="Only draft estimates or invoices can be sent.",
+    )
+    invoice.status = InvoiceStatus.SENT
+    await db.commit()
+    await db.refresh(invoice)
+    return invoice
+
+
+@router.post("/{invoice_id}/approve", response_model=InvoiceRead)
+async def approve_estimate(
+    invoice_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Invoice:
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    ensure_invoice_transition(
+        invoice,
+        allowed_types={InvoiceType.ESTIMATE},
+        allowed_statuses={InvoiceStatus.DRAFT, InvoiceStatus.SENT},
+        detail="Only draft or sent estimates can be approved.",
+    )
+    invoice.status = InvoiceStatus.APPROVED
+    await db.commit()
+    await db.refresh(invoice)
+    return invoice
+
+
+@router.post("/{invoice_id}/mark-paid", response_model=InvoiceRead)
+async def mark_invoice_paid(
+    invoice_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Invoice:
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    ensure_invoice_transition(
+        invoice,
+        allowed_types={InvoiceType.INVOICE},
+        allowed_statuses={InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED},
+        detail="Only open invoices can be marked paid.",
+    )
+    invoice.status = InvoiceStatus.PAID
+    await db.commit()
+    await db.refresh(invoice)
+    return invoice
+
+
+@router.post("/{invoice_id}/convert-to-invoice", response_model=InvoiceConversionRead)
+async def convert_estimate_to_invoice(
+    invoice_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> dict[str, Invoice]:
+    estimate = await get_company_invoice(invoice_id, db, principal)
+    ensure_invoice_transition(
+        estimate,
+        allowed_types={InvoiceType.ESTIMATE},
+        allowed_statuses={InvoiceStatus.APPROVED},
+        detail="Only approved estimates can be converted to invoices.",
+    )
+
+    invoice = Invoice(
+        amount_cents=estimate.amount_cents,
+        company_id=estimate.company_id,
+        customer_id=estimate.customer_id,
+        document_type=InvoiceType.INVOICE,
+        due_at=estimate.due_at,
+        job_id=estimate.job_id,
+        notes=append_workflow_note(estimate.notes, "Converted from approved estimate."),
+        status=InvoiceStatus.DRAFT,
+        title=converted_invoice_title(estimate.title),
+    )
+    db.add(invoice)
+    await db.flush()
+    await copy_invoice_line_items(
+        source_invoice_id=estimate.id,
+        target_invoice_id=invoice.id,
+        db=db,
+    )
+    estimate.status = InvoiceStatus.CONVERTED
+    await db.commit()
+    await db.refresh(estimate)
+    await db.refresh(invoice)
+    return {"source_estimate": estimate, "invoice": invoice}
 
 
 @router.get("/{invoice_id}/line-items", response_model=list[InvoiceLineItemRead])

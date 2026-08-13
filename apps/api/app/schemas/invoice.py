@@ -43,3 +43,8 @@ class InvoiceRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class InvoiceConversionRead(BaseModel):
+    source_estimate: InvoiceRead
+    invoice: InvoiceRead
