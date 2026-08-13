@@ -18,6 +18,7 @@ from app.schemas.invoice_line_item import (
     InvoiceLineItemUpdate,
 )
 from app.schemas.principal import Principal
+from app.services.audit import record_audit_event
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -32,6 +33,18 @@ def append_workflow_note(existing_notes: str | None, note: str) -> str:
     if not existing_notes:
         return note
     return f"{existing_notes.rstrip()}\n\n{note}"
+
+
+def invoice_audit_context(invoice: Invoice, **extra: object) -> dict[str, object]:
+    return {
+        "amount_cents": invoice.amount_cents,
+        "customer_id": invoice.customer_id,
+        "document_type": invoice.document_type,
+        "job_id": invoice.job_id,
+        "status": invoice.status,
+        "title": invoice.title,
+        **extra,
+    }
 
 
 async def ensure_company_customer(
@@ -176,6 +189,15 @@ async def create_invoice(
         await ensure_company_job(payload.job_id, payload.customer_id, db, principal)
     invoice = Invoice(company_id=principal.company_id, **payload.model_dump())
     db.add(invoice)
+    await db.flush()
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.created",
+        context=invoice_audit_context(invoice),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -206,8 +228,17 @@ async def update_invoice(
         await ensure_company_job(updates["job_id"], next_customer_id, db, principal)
     elif "customer_id" in updates and invoice.job_id is not None:
         await ensure_company_job(invoice.job_id, next_customer_id, db, principal)
+    changed_fields = sorted(updates)
     for field, value in updates.items():
         setattr(invoice, field, value)
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.updated",
+        context=invoice_audit_context(invoice, changed_fields=changed_fields),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -227,6 +258,14 @@ async def send_invoice(
         detail="Only draft estimates or invoices can be sent.",
     )
     invoice.status = InvoiceStatus.SENT
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.sent",
+        context=invoice_audit_context(invoice),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -246,6 +285,14 @@ async def approve_estimate(
         detail="Only draft or sent estimates can be approved.",
     )
     invoice.status = InvoiceStatus.APPROVED
+    record_audit_event(
+        db,
+        principal,
+        action="estimate.approved",
+        context=invoice_audit_context(invoice),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -265,6 +312,14 @@ async def mark_invoice_paid(
         detail="Only open invoices can be marked paid.",
     )
     invoice.status = InvoiceStatus.PAID
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.paid",
+        context=invoice_audit_context(invoice),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -303,6 +358,22 @@ async def convert_estimate_to_invoice(
         db=db,
     )
     estimate.status = InvoiceStatus.CONVERTED
+    record_audit_event(
+        db,
+        principal,
+        action="estimate.converted",
+        context=invoice_audit_context(estimate, converted_invoice_id=invoice.id),
+        resource_id=estimate.id,
+        resource_type="invoice",
+    )
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.created_from_estimate",
+        context=invoice_audit_context(invoice, source_estimate_id=estimate.id),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(estimate)
     await db.refresh(invoice)
@@ -340,6 +411,15 @@ async def create_invoice_line_item(
     db.add(line_item)
     await db.flush()
     await recalculate_invoice_total(invoice_id, db)
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.line_item_created",
+        context=invoice_audit_context(invoice, line_item_id=line_item.id),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(line_item)
     return line_item
@@ -361,6 +441,19 @@ async def update_invoice_line_item(
     for field, value in updates.items():
         setattr(line_item, field, value)
     await recalculate_invoice_total(invoice_id, db)
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.line_item_updated",
+        context=invoice_audit_context(
+            invoice,
+            changed_fields=sorted(updates),
+            line_item_id=line_item.id,
+        ),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
     await db.refresh(line_item)
     return line_item
@@ -377,4 +470,13 @@ async def delete_invoice_line_item(
     await db.delete(line_item)
     await db.flush()
     await recalculate_invoice_total(invoice_id, db)
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.line_item_deleted",
+        context=invoice_audit_context(invoice, line_item_id=line_item_id),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
     await db.commit()
