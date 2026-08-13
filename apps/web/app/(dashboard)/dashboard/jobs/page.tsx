@@ -336,6 +336,7 @@ export default function JobsPage() {
           customer_id: job.customer_id,
           document_type: "invoice",
           due_at: null,
+          job_id: job.id,
           notes: [
             `Created from completed job: ${job.title}`,
             `Customer: ${customer?.name ?? "Unknown customer"}`,

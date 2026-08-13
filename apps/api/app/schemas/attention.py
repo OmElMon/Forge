@@ -9,6 +9,7 @@ AttentionCategory = Literal[
     "invoice_collection",
     "job_scheduling",
     "job_assignment",
+    "job_invoicing",
 ]
 AttentionPriority = Literal["urgent", "high", "medium"]
 
@@ -36,4 +37,5 @@ class AttentionSummary(BaseModel):
     overdue_invoice_count: int
     unscheduled_job_count: int
     unassigned_job_count: int
+    completed_uninvoiced_job_count: int
     items: list[AttentionItem]

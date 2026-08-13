@@ -24,6 +24,12 @@ class Invoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
         nullable=False,
     )
+    job_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     document_type: Mapped[InvoiceType] = mapped_column(
         Enum(
             InvoiceType,

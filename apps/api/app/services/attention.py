@@ -10,6 +10,12 @@ from app.schemas.attention import AttentionItem, AttentionSummary
 OPEN_JOB_STATUSES = {JobStatus.NEW, JobStatus.SCHEDULED, JobStatus.IN_PROGRESS}
 OPEN_INVOICE_STATUSES = {InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED}
 OPEN_ESTIMATE_STATUSES = {InvoiceStatus.SENT, InvoiceStatus.APPROVED}
+INVOICE_COVERAGE_STATUSES = {
+    InvoiceStatus.DRAFT,
+    InvoiceStatus.SENT,
+    InvoiceStatus.APPROVED,
+    InvoiceStatus.PAID,
+}
 PRIORITY_WEIGHT = {"urgent": 0, "high": 1, "medium": 2}
 
 
@@ -58,6 +64,14 @@ def build_attention_summary(
     unscheduled_jobs = [job for job in open_jobs if job.scheduled_start is None]
     unassigned_jobs = [
         job for job in open_jobs if job.technician_id is None and not job.technician_name
+    ]
+    invoiced_job_ids = {
+        invoice.job_id
+        for invoice in invoices
+        if invoice.job_id and invoice.status in INVOICE_COVERAGE_STATUSES
+    }
+    completed_uninvoiced_jobs = [
+        job for job in jobs if job.status == JobStatus.COMPLETED and job.id not in invoiced_job_ids
     ]
 
     for invoice in open_estimates:
@@ -148,6 +162,26 @@ def build_attention_summary(
             )
         )
 
+    for job in completed_uninvoiced_jobs:
+        customer_name = _customer_name(customer_by_id, job.customer_id)
+        items.append(
+            AttentionItem(
+                category="job_invoicing",
+                priority="high",
+                title="Completed job needs invoice",
+                description=f"{customer_name} has completed work that has not been billed.",
+                action_label="Create invoice",
+                action_href=f"/dashboard/jobs?focus={job.id}",
+                source_type="job",
+                source_id=job.id,
+                customer_id=job.customer_id,
+                customer_name=customer_name,
+                amount_cents=job.amount_cents,
+                due_at=job.scheduled_start,
+                created_at=job.created_at,
+            )
+        )
+
     items.sort(
         key=lambda item: (
             PRIORITY_WEIGHT[item.priority],
@@ -165,5 +199,6 @@ def build_attention_summary(
         overdue_invoice_count=len(overdue_invoices),
         unscheduled_job_count=len(unscheduled_jobs),
         unassigned_job_count=len(unassigned_jobs),
+        completed_uninvoiced_job_count=len(completed_uninvoiced_jobs),
         items=items[:limit],
     )

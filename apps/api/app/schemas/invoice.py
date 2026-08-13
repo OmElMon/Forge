@@ -8,6 +8,7 @@ from app.models.enums import InvoiceStatus, InvoiceType
 
 class InvoiceCreate(BaseModel):
     customer_id: UUID
+    job_id: UUID | None = None
     document_type: InvoiceType = InvoiceType.ESTIMATE
     status: InvoiceStatus = InvoiceStatus.DRAFT
     title: str = Field(min_length=2, max_length=160)
@@ -18,6 +19,7 @@ class InvoiceCreate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     customer_id: UUID | None = None
+    job_id: UUID | None = None
     document_type: InvoiceType | None = None
     status: InvoiceStatus | None = None
     title: str | None = Field(default=None, min_length=2, max_length=160)
@@ -30,6 +32,7 @@ class InvoiceRead(BaseModel):
     id: UUID
     company_id: UUID
     customer_id: UUID
+    job_id: UUID | None
     document_type: InvoiceType
     status: InvoiceStatus
     title: str

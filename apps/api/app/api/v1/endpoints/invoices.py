@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
+from app.models.job import Job
 from app.schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceUpdate
 from app.schemas.invoice_line_item import (
     InvoiceLineItemCreate,
@@ -33,6 +34,23 @@ async def ensure_company_customer(
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+
+
+async def ensure_company_job(
+    job_id: UUID,
+    customer_id: UUID,
+    db: AsyncSession,
+    principal: Principal,
+) -> None:
+    result = await db.execute(
+        select(Job.id).where(
+            Job.id == job_id,
+            Job.customer_id == customer_id,
+            Job.company_id == principal.company_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
 
 
 async def get_company_invoice(
@@ -104,6 +122,8 @@ async def create_invoice(
     principal: Principal = Depends(get_principal),
 ) -> Invoice:
     await ensure_company_customer(payload.customer_id, db, principal)
+    if payload.job_id is not None:
+        await ensure_company_job(payload.job_id, payload.customer_id, db, principal)
     invoice = Invoice(company_id=principal.company_id, **payload.model_dump())
     db.add(invoice)
     await db.commit()
@@ -131,6 +151,11 @@ async def update_invoice(
     updates = payload.model_dump(exclude_unset=True)
     if "customer_id" in updates:
         await ensure_company_customer(updates["customer_id"], db, principal)
+    next_customer_id = updates.get("customer_id", invoice.customer_id)
+    if updates.get("job_id") is not None:
+        await ensure_company_job(updates["job_id"], next_customer_id, db, principal)
+    elif "customer_id" in updates and invoice.job_id is not None:
+        await ensure_company_job(invoice.job_id, next_customer_id, db, principal)
     for field, value in updates.items():
         setattr(invoice, field, value)
     await db.commit()
