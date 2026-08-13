@@ -28,6 +28,15 @@ class JobUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class JobSchedule(BaseModel):
+    scheduled_start: datetime
+    technician_id: UUID | None = None
+
+
+class JobAssignment(BaseModel):
+    technician_id: UUID
+
+
 class JobRead(BaseModel):
     id: UUID
     company_id: UUID

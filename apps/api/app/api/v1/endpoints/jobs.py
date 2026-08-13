@@ -7,12 +7,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
+from app.models.enums import JobStatus
 from app.models.job import Job
 from app.models.technician import Technician
-from app.schemas.job import JobCreate, JobRead, JobUpdate
+from app.schemas.job import JobAssignment, JobCreate, JobRead, JobSchedule, JobUpdate
 from app.schemas.principal import Principal
+from app.services.audit import record_audit_event
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def job_audit_context(job: Job, **extra: object) -> dict[str, object]:
+    return {
+        "amount_cents": job.amount_cents,
+        "customer_id": job.customer_id,
+        "scheduled_start": job.scheduled_start.isoformat() if job.scheduled_start else None,
+        "status": job.status,
+        "technician_id": job.technician_id,
+        "technician_name": job.technician_name,
+        "title": job.title,
+        **extra,
+    }
+
+
+def ensure_job_transition(
+    job: Job,
+    *,
+    allowed_statuses: set[JobStatus],
+    detail: str,
+) -> None:
+    if job.status not in allowed_statuses:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
 async def ensure_company_customer(
@@ -93,6 +118,15 @@ async def create_job(
         data["technician_name"] = technician.name
     job = Job(company_id=principal.company_id, **data)
     db.add(job)
+    await db.flush()
+    record_audit_event(
+        db,
+        principal,
+        action="job.created",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -123,8 +157,156 @@ async def update_job(
         updates["technician_name"] = technician.name
     elif "technician_id" in updates and updates["technician_id"] is None:
         updates["technician_name"] = None
+    changed_fields = sorted(updates)
     for field, value in updates.items():
         setattr(job, field, value)
+    record_audit_event(
+        db,
+        principal,
+        action="job.updated",
+        context=job_audit_context(job, changed_fields=changed_fields),
+        resource_id=job.id,
+        resource_type="job",
+    )
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/schedule", response_model=JobRead)
+async def schedule_job(
+    job_id: UUID,
+    payload: JobSchedule,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Job:
+    job = await get_company_job(job_id, db, principal)
+    ensure_job_transition(
+        job,
+        allowed_statuses={JobStatus.NEW, JobStatus.SCHEDULED},
+        detail="Only new or scheduled jobs can be scheduled.",
+    )
+    job.scheduled_start = payload.scheduled_start
+    job.status = JobStatus.SCHEDULED
+    if payload.technician_id is not None:
+        technician = await get_company_technician(payload.technician_id, db, principal)
+        job.technician_id = technician.id
+        job.technician_name = technician.name
+    record_audit_event(
+        db,
+        principal,
+        action="job.scheduled",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/assign", response_model=JobRead)
+async def assign_job(
+    job_id: UUID,
+    payload: JobAssignment,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Job:
+    job = await get_company_job(job_id, db, principal)
+    ensure_job_transition(
+        job,
+        allowed_statuses={JobStatus.NEW, JobStatus.SCHEDULED, JobStatus.IN_PROGRESS},
+        detail="Completed or canceled jobs cannot be reassigned.",
+    )
+    technician = await get_company_technician(payload.technician_id, db, principal)
+    job.technician_id = technician.id
+    job.technician_name = technician.name
+    record_audit_event(
+        db,
+        principal,
+        action="job.assigned",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/start", response_model=JobRead)
+async def start_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Job:
+    job = await get_company_job(job_id, db, principal)
+    ensure_job_transition(
+        job,
+        allowed_statuses={JobStatus.NEW, JobStatus.SCHEDULED},
+        detail="Only new or scheduled jobs can be started.",
+    )
+    job.status = JobStatus.IN_PROGRESS
+    record_audit_event(
+        db,
+        principal,
+        action="job.started",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/complete", response_model=JobRead)
+async def complete_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Job:
+    job = await get_company_job(job_id, db, principal)
+    ensure_job_transition(
+        job,
+        allowed_statuses={JobStatus.SCHEDULED, JobStatus.IN_PROGRESS},
+        detail="Only scheduled or in-progress jobs can be completed.",
+    )
+    job.status = JobStatus.COMPLETED
+    record_audit_event(
+        db,
+        principal,
+        action="job.completed",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/cancel", response_model=JobRead)
+async def cancel_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> Job:
+    job = await get_company_job(job_id, db, principal)
+    ensure_job_transition(
+        job,
+        allowed_statuses={JobStatus.NEW, JobStatus.SCHEDULED, JobStatus.IN_PROGRESS},
+        detail="Completed or canceled jobs cannot be canceled.",
+    )
+    job.status = JobStatus.CANCELED
+    record_audit_event(
+        db,
+        principal,
+        action="job.canceled",
+        context=job_audit_context(job),
+        resource_id=job.id,
+        resource_type="job",
+    )
     await db.commit()
     await db.refresh(job)
     return job
