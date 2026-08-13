@@ -64,22 +64,14 @@ const statusLabels: Record<JobStatus, string> = {
   scheduled: "Scheduled",
 };
 
-const workflowActions: Record<JobStatus, { label: string; status: JobStatus; tone?: "primary" | "danger" }[]> = {
-  canceled: [{ label: "Reopen", status: "new" }],
-  completed: [{ label: "Reopen", status: "in_progress" }],
-  in_progress: [
-    { label: "Complete job", status: "completed", tone: "primary" },
-    { label: "Move back", status: "scheduled" },
-  ],
-  new: [
-    { label: "Mark scheduled", status: "scheduled", tone: "primary" },
-    { label: "Cancel", status: "canceled", tone: "danger" },
-  ],
-  scheduled: [
-    { label: "Start job", status: "in_progress", tone: "primary" },
-    { label: "Complete", status: "completed" },
-    { label: "Cancel", status: "canceled", tone: "danger" },
-  ],
+type JobWorkflowAction = "schedule" | "start" | "complete" | "cancel";
+
+type WorkflowActionConfig = {
+  action: JobWorkflowAction;
+  disabled?: boolean;
+  helper?: string;
+  label: string;
+  tone?: "primary" | "danger";
 };
 
 async function readApiResponse(response: Response) {
@@ -295,16 +287,24 @@ export default function JobsPage() {
     }
   }
 
-  async function updateJobStatus(job: Job, status: JobStatus) {
+  async function runJobWorkflow(job: Job, action: JobWorkflowAction) {
     setWorkflowUpdatingId(job.id);
     setError("");
     setNotice("");
 
+    const payload =
+      action === "schedule"
+        ? {
+            scheduled_start: job.scheduled_start,
+            technician_id: job.technician_id,
+          }
+        : {};
+
     try {
-      const response = await fetch(`/api/jobs/${job.id}`, {
-        body: JSON.stringify({ status }),
+      const response = await fetch(`/api/jobs/${job.id}/${action}`, {
+        body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
-        method: "PATCH",
+        method: "POST",
       });
       const result = await readApiResponse(response);
       if (!response.ok) {
@@ -315,7 +315,7 @@ export default function JobsPage() {
       const nextJobs = jobs.map((currentJob) => (currentJob.id === updated.id ? updated : currentJob));
       setJobs(nextJobs);
       setSelectedId(updated.id);
-      await syncTechnicianAvailability(job, status, nextJobs);
+      await syncTechnicianAvailability(job, updated.status, nextJobs);
     } catch {
       setError("CrewPilot OS could not move this job.");
     } finally {
@@ -549,9 +549,9 @@ export default function JobsPage() {
                 </div>
               </div>
               <WorkflowActions
-                currentStatus={selectedJob.status}
+                job={selectedJob}
                 disabled={workflowUpdatingId === selectedJob.id}
-                onMove={(status) => updateJobStatus(selectedJob, status)}
+                onRun={(action) => runJobWorkflow(selectedJob, action)}
               />
             </div>
 
@@ -627,23 +627,32 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof BriefcaseBusine
 }
 
 function WorkflowActions({
-  currentStatus,
   disabled,
-  onMove,
+  job,
+  onRun,
 }: {
-  currentStatus: JobStatus;
   disabled: boolean;
-  onMove: (status: JobStatus) => void;
+  job: Job;
+  onRun: (action: JobWorkflowAction) => void;
 }) {
-  const actions = workflowActions[currentStatus];
+  const actions = workflowActionsForJob(job);
+  if (actions.length === 0) {
+    return (
+      <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+        This job has reached the end of its active workflow.
+      </p>
+    );
+  }
+
   return (
     <div className="mt-4 flex flex-wrap gap-2">
       {actions.map((action) => (
         <button
-          key={`${currentStatus}-${action.status}`}
+          key={`${job.id}-${action.action}`}
           type="button"
-          disabled={disabled}
-          onClick={() => onMove(action.status)}
+          disabled={disabled || action.disabled}
+          title={action.helper}
+          onClick={() => onRun(action.action)}
           className={`rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
             action.tone === "primary"
               ? "bg-orange-600 text-white hover:bg-orange-700"
@@ -657,6 +666,39 @@ function WorkflowActions({
       ))}
     </div>
   );
+}
+
+function workflowActionsForJob(job: Job): WorkflowActionConfig[] {
+  if (job.status === "new") {
+    return [
+      {
+        action: "schedule",
+        disabled: !job.scheduled_start,
+        helper: job.scheduled_start ? undefined : "Add a scheduled time in Edit job first.",
+        label: "Mark scheduled",
+        tone: "primary",
+      },
+      { action: "start", label: "Start now" },
+      { action: "cancel", label: "Cancel", tone: "danger" },
+    ];
+  }
+
+  if (job.status === "scheduled") {
+    return [
+      { action: "start", label: "Start job", tone: "primary" },
+      { action: "complete", label: "Complete" },
+      { action: "cancel", label: "Cancel", tone: "danger" },
+    ];
+  }
+
+  if (job.status === "in_progress") {
+    return [
+      { action: "complete", label: "Complete job", tone: "primary" },
+      { action: "cancel", label: "Cancel", tone: "danger" },
+    ];
+  }
+
+  return [];
 }
 
 function JobFields({ customers, technicians, job }: { customers: Customer[]; technicians: Technician[]; job?: Job }) {
