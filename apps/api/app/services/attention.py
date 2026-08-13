@@ -127,9 +127,7 @@ def build_attention_summary(
                 category="job_scheduling",
                 priority="medium",
                 title="Job missing schedule",
-                description=(
-                    f"{customer_name} has {job.title.lower()} waiting for a time slot."
-                ),
+                description=(f"{customer_name} has {job.title.lower()} waiting for a time slot."),
                 action_label="Schedule job",
                 action_href=f"/dashboard/jobs?focus={job.id}",
                 source_type="job",
