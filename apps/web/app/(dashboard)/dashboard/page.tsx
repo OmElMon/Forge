@@ -15,6 +15,8 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import type { Principal } from "@/lib/auth";
+
 type Customer = {
   id: string;
   name: string;
@@ -165,6 +167,7 @@ export default function DashboardPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [attentionSummary, setAttentionSummary] = useState<AttentionSummary>(emptyAttentionSummary);
+  const [principal, setPrincipal] = useState<Principal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -216,6 +219,13 @@ export default function DashboardPage() {
     void loadData();
   }, []);
 
+  useEffect(() => {
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((session: Principal | null) => setPrincipal(session))
+      .catch(() => setPrincipal(null));
+  }, []);
+
   const customerById = useMemo(
     () => new Map(customers.map((customer) => [customer.id, customer])),
     [customers],
@@ -229,6 +239,7 @@ export default function DashboardPage() {
   const unassignedJobs = openJobs.filter((job) => !job.technician_id && !job.technician_name);
   const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
   const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
+  const ownerName = principal?.full_name.trim().split(/\s+/)[0] || "there";
   const paidRevenueCents = invoices
     .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
@@ -251,7 +262,9 @@ export default function DashboardPage() {
           <p className="text-sm font-medium text-orange-600">
             {new Intl.DateTimeFormat(undefined, { dateStyle: "full" }).format(today)}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Good morning, Moe</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+            Good morning, {ownerName}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
             Your owner command center for jobs, dispatch, estimates, invoices, and revenue recovery.
           </p>
