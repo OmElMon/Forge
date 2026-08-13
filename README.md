@@ -12,6 +12,7 @@ It is being built as a realistic SaaS-style product: authenticated workspaces, t
 - Customer profiles with recent jobs and revenue summaries
 - Jobs and schedule views for dispatch-style operations
 - Estimates/invoices workflow, including estimate-to-invoice conversion and paid/open revenue tracking
+- Settings/operations page that documents the canonical deployment shape and sanity checks
 - PostgreSQL migrations through Alembic, with row-level security enabled on app tables
 - Render-ready API deployment and Netlify-compatible web configuration
 
@@ -64,6 +65,8 @@ The current production shape uses:
 See `docs/deployment.md` for the Netlify settings and backend environment variables.
 
 Render runs Alembic migrations on deploy through `apps/api/docker-entrypoint.sh`.
+
+See `docs/stability.md` for the current production assumptions, credit-control guidance, and deploy sanity checklist.
 
 ## Workflow
 

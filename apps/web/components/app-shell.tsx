@@ -96,9 +96,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="absolute inset-x-4 bottom-5 border-t pt-4">
-          <a href="#" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100">
+          <Link href="/dashboard/settings" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100">
             <Settings className="size-[18px]" /> Settings
-          </a>
+          </Link>
         </div>
       </aside>
 
