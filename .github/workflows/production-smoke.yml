@@ -37,8 +37,11 @@ jobs:
         run: |
           curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/health" | grep -q '"ok"'
 
+      - name: Check API status
+        run: |
+          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/status" | grep -q '"status":"ok"'
+
       - name: Check API readiness
         if: ${{ inputs.check_readiness }}
         run: |
           curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/ready" | grep -q '"ready"'
-
