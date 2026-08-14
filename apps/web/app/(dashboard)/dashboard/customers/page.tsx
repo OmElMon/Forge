@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   BriefcaseBusiness,
   CalendarClock,
   CircleDollarSign,
@@ -53,6 +54,15 @@ type Invoice = {
   created_at: string;
 };
 
+type AuditLog = {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  context: Record<string, unknown>;
+  created_at: string;
+};
+
 const statusStyles: Record<CustomerStatus, string> = {
   active: "bg-emerald-50 text-emerald-700",
   inactive: "bg-gray-100 text-gray-600",
@@ -83,6 +93,26 @@ const invoiceStatusStyles: Record<InvoiceStatus, string> = {
   paid: "bg-emerald-50 text-emerald-700",
   sent: "bg-orange-50 text-orange-700",
   void: "bg-rose-50 text-rose-700",
+};
+
+const activityLabels: Record<string, string> = {
+  "estimate.approved": "Estimate approved",
+  "estimate.converted": "Estimate converted",
+  "invoice.created": "Invoice created",
+  "invoice.created_from_estimate": "Invoice created from estimate",
+  "invoice.line_item_created": "Invoice line item added",
+  "invoice.line_item_deleted": "Invoice line item removed",
+  "invoice.line_item_updated": "Invoice line item updated",
+  "invoice.paid": "Invoice paid",
+  "invoice.sent": "Invoice sent",
+  "invoice.updated": "Invoice updated",
+  "job.assigned": "Job assigned",
+  "job.canceled": "Job canceled",
+  "job.completed": "Job completed",
+  "job.created": "Job created",
+  "job.scheduled": "Job scheduled",
+  "job.started": "Job started",
+  "job.updated": "Job updated",
 };
 
 async function readApiResponse(response: Response) {
@@ -131,8 +161,21 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function activityLabel(action: string) {
+  return activityLabels[action] ?? action.replaceAll(".", " ");
+}
+
+function activityDescription(log: AuditLog) {
+  const title = typeof log.context.title === "string" ? log.context.title : null;
+  const status = typeof log.context.status === "string" ? log.context.status.replace("_", " ") : null;
+  const amountCents = typeof log.context.amount_cents === "number" ? log.context.amount_cents : null;
+  const parts = [title, status ? `Status: ${status}` : null, amountCents ? formatMoney(amountCents) : null];
+  return parts.filter(Boolean).join(" · ") || `${log.resource_type} activity`;
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [activityLogs, setActivityLogs] = useState<AuditLog[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,19 +201,30 @@ export default function CustomersPage() {
   const selectedOpenEstimateCents = selectedCustomerInvoices
     .filter((invoice) => invoice.document_type === "estimate" && !["converted", "void"].includes(invoice.status))
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
+  const selectedCustomerActivity = selectedCustomer
+    ? activityLogs
+        .filter((log) => log.context.customer_id === selectedCustomer.id)
+        .slice(0, 5)
+    : [];
 
   async function loadCustomers() {
     setLoading(true);
     setError("");
     try {
-      const [customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
+      const [activityResponse, customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
+        fetch("/api/audit-logs?limit=100", { cache: "no-store" }),
         fetch("/api/customers", { cache: "no-store" }),
         fetch("/api/jobs", { cache: "no-store" }),
         fetch("/api/invoices", { cache: "no-store" }),
       ]);
+      const activityPayload = await readApiResponse(activityResponse);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
       const invoicesPayload = await readApiResponse(invoicesResponse);
+      if (!activityResponse.ok) {
+        setError(errorMessage(activityPayload, "Unable to load activity."));
+        return;
+      }
       if (!customersResponse.ok) {
         setError(errorMessage(customersPayload, "Unable to load customers."));
         return;
@@ -184,6 +238,7 @@ export default function CustomersPage() {
         return;
       }
       const loaded = customersPayload as Customer[];
+      setActivityLogs(activityPayload as AuditLog[]);
       setCustomers(loaded);
       setJobs(jobsPayload as Job[]);
       setInvoices(invoicesPayload as Invoice[]);
@@ -402,6 +457,33 @@ export default function CustomersPage() {
               <MoneyStat label="Paid" value={formatMoney(selectedPaidCents)} />
               <MoneyStat label="Unpaid" value={formatMoney(selectedUnpaidCents)} />
               <MoneyStat label="Open estimates" value={formatMoney(selectedOpenEstimateCents)} />
+            </div>
+
+            <div className="mt-5 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                  <Activity className="size-4 text-orange-600" />
+                  Activity timeline
+                </p>
+                <span className="text-xs text-gray-400">Last 5</span>
+              </div>
+              {selectedCustomerActivity.length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No tracked workflow activity for this customer yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {selectedCustomerActivity.map((log) => (
+                    <div key={log.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{activityLabel(log.action)}</p>
+                        <span className="text-[11px] text-gray-400">
+                          {new Date(log.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs capitalize text-gray-500">{activityDescription(log)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-5 rounded-lg border p-4">
