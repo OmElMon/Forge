@@ -19,6 +19,17 @@ When Moe says to continue building, Codex should:
 9. Watch GitHub Actions.
 10. Report what shipped, what passed, and what should come next.
 
+## Autopilot batch mode
+
+When Moe says to “ramp the workflow,” “keep building,” or otherwise asks not to approve every stage, Codex should run in a bounded autopilot batch:
+
+- Ship up to 2 small slices in one turn when they are low-risk and naturally connected.
+- Stop after a failing check, production risk, unclear product decision, secret/billing requirement, or meaningful frontend deploy decision.
+- Prefer code that advances the documented build queue over speculative rewrites.
+- Keep commentary compact and focused on state changes.
+- Do not burn external deploy credits intentionally; note frontend changes so Moe can decide when to publish.
+- End with a clean repo, pushed commits, CI status, and the next recommended slice.
+
 ## Token-saving rules
 
 To reduce repeated planning/token use:
