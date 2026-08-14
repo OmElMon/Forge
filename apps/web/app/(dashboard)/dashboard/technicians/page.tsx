@@ -50,6 +50,8 @@ type Job = {
   notes: string | null;
 };
 
+type WorkloadTone = "danger" | "healthy" | "warning";
+
 const statusStyles: Record<TechnicianStatus, string> = {
   available: "bg-emerald-50 text-emerald-700",
   off_today: "bg-gray-100 text-gray-700",
@@ -77,6 +79,8 @@ const jobStatusLabels: Record<JobStatus, string> = {
   new: "New",
   scheduled: "Scheduled",
 };
+
+const openJobStatuses = new Set<JobStatus>(["new", "scheduled", "in_progress"]);
 
 async function readApiResponse(response: Response) {
   const text = await response.text();
@@ -132,6 +136,31 @@ function formatSchedule(value: string | null) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+function technicianJobMatch(job: Job, technician: Technician) {
+  return job.technician_id === technician.id || (!job.technician_id && job.technician_name === technician.name);
+}
+
+function workloadTone(openJobCount: number, status: TechnicianStatus): WorkloadTone {
+  if (status === "off_today" && openJobCount > 0) return "warning";
+  if (openJobCount >= 4) return "danger";
+  if (openJobCount >= 2) return "warning";
+  return "healthy";
+}
+
+function workloadLabel(openJobCount: number, status: TechnicianStatus) {
+  if (status === "off_today" && openJobCount > 0) return "Coverage risk";
+  if (openJobCount >= 4) return "Overloaded";
+  if (openJobCount >= 2) return "Busy";
+  if (openJobCount === 1) return "Assigned";
+  return "Clear";
+}
+
+const workloadStyles: Record<WorkloadTone, string> = {
+  danger: "bg-rose-50 text-rose-700",
+  healthy: "bg-emerald-50 text-emerald-700",
+  warning: "bg-amber-50 text-amber-700",
+};
 
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -210,10 +239,48 @@ export default function TechniciansPage() {
     );
   }, [technicians]);
 
+  const workloadByTechnicianId = useMemo(() => {
+    return new Map(
+      technicians.map((technician) => {
+        const assignedJobs = jobs.filter((job) => technicianJobMatch(job, technician));
+        const openJobs = assignedJobs.filter((job) => openJobStatuses.has(job.status));
+        const nextJob =
+          openJobs
+            .filter((job) => Boolean(job.scheduled_start))
+            .sort((a, b) => new Date(a.scheduled_start!).getTime() - new Date(b.scheduled_start!).getTime())[0] ??
+          openJobs[0] ??
+          null;
+        return [
+          technician.id,
+          {
+            assignedJobs,
+            nextJob,
+            openJobs,
+            tone: workloadTone(openJobs.length, technician.status),
+          },
+        ];
+      }),
+    );
+  }, [jobs, technicians]);
+
+  const workloadCounts = useMemo(() => {
+    return technicians.reduce(
+      (totals, technician) => {
+        const workload = workloadByTechnicianId.get(technician.id);
+        const openCount = workload?.openJobs.length ?? 0;
+        if (openCount === 0 && technician.status === "available") totals.clear += 1;
+        if (openCount >= 2) totals.busy += 1;
+        if (technician.status === "off_today" && openCount > 0) totals.coverageRisks += 1;
+        return totals;
+      },
+      { busy: 0, clear: 0, coverageRisks: 0 },
+    );
+  }, [technicians, workloadByTechnicianId]);
+
   const selectedJobs = useMemo(() => {
     if (!selectedTechnician) return [];
     return jobs
-      .filter((job) => job.technician_id === selectedTechnician.id || (!job.technician_id && job.technician_name === selectedTechnician.name))
+      .filter((job) => technicianJobMatch(job, selectedTechnician))
       .sort((a, b) => {
         if (!a.scheduled_start && !b.scheduled_start) return a.title.localeCompare(b.title);
         if (!a.scheduled_start) return 1;
@@ -225,6 +292,7 @@ export default function TechniciansPage() {
   const openSelectedJobs = selectedJobs.filter((job) => !["completed", "canceled"].includes(job.status));
   const completedSelectedJobs = selectedJobs.filter((job) => job.status === "completed");
   const nextSelectedJob = openSelectedJobs.find((job) => Boolean(job.scheduled_start)) ?? openSelectedJobs[0] ?? null;
+  const selectedWorkload = selectedTechnician ? workloadByTechnicianId.get(selectedTechnician.id) : null;
 
   async function createTechnician(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -303,6 +371,12 @@ export default function TechniciansPage() {
           <MetricCard icon={UserRound} label="Off today" value={counts.off_today} />
         </div>
 
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <MetricCard icon={Clock3} label="Clear capacity" value={workloadCounts.clear} />
+          <MetricCard icon={BriefcaseBusiness} label="Busy techs" value={workloadCounts.busy} />
+          <MetricCard icon={CalendarClock} label="Coverage risks" value={workloadCounts.coverageRisks} />
+        </div>
+
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
 
         <div className="mt-6 overflow-hidden rounded-xl border bg-white shadow-panel">
@@ -324,14 +398,25 @@ export default function TechniciansPage() {
             <div className="divide-y">
               {filteredTechnicians.map((technician) => {
                 const selected = technician.id === selectedTechnician?.id;
+                const workload = workloadByTechnicianId.get(technician.id);
+                const openJobCount = workload?.openJobs.length ?? 0;
+                const nextJob = workload?.nextJob ?? null;
+                const tone = workload?.tone ?? "healthy";
                 return (
                   <button key={technician.id} type="button" onClick={() => setSelectedId(technician.id)} className={`flex w-full flex-col gap-3 px-5 py-4 text-left transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between ${selected ? "bg-orange-50/60" : ""}`}>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold">{technician.name}</h3>
                         <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusStyles[technician.status]}`}>{statusLabels[technician.status]}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${workloadStyles[tone]}`}>
+                          {workloadLabel(openJobCount, technician.status)}
+                        </span>
                       </div>
                       <p className="mt-2 text-xs text-gray-500">{[technician.phone, technician.email].filter(Boolean).join(" · ") || "No contact info yet"}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {openJobCount} open job{openJobCount === 1 ? "" : "s"}
+                        {nextJob ? ` · Next: ${nextJob.title} (${formatSchedule(nextJob.scheduled_start)})` : " · No upcoming assignment"}
+                      </p>
                       {technician.skills.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {technician.skills.map((skill) => <span key={skill} className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-600">{skill}</span>)}
@@ -367,6 +452,19 @@ export default function TechniciansPage() {
               <MiniMetric icon={CheckCircle2} label="Completed" value={completedSelectedJobs.length} />
               <MiniMetric icon={Clock3} label="Total assigned" value={selectedJobs.length} />
             </div>
+            {selectedWorkload && (
+              <div className={`mt-4 rounded-lg p-4 ${workloadStyles[selectedWorkload.tone]}`}>
+                <p className="text-xs font-semibold uppercase tracking-wide">Workload signal</p>
+                <p className="mt-2 font-semibold">
+                  {workloadLabel(selectedWorkload.openJobs.length, selectedTechnician.status)}
+                </p>
+                <p className="mt-1 text-xs leading-5">
+                  {selectedWorkload.openJobs.length === 0
+                    ? "No active assignments. This technician has room for new work."
+                    : `${selectedWorkload.openJobs.length} active assignment${selectedWorkload.openJobs.length === 1 ? "" : "s"} tied to this technician.`}
+                </p>
+              </div>
+            )}
             {nextSelectedJob && (
               <div className="mt-4 rounded-lg border border-orange-100 bg-orange-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Next assignment</p>
