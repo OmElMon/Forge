@@ -96,7 +96,7 @@ Frontend:
 
 - Login and workspace registration.
 - Protected dashboard shell.
-- Overview dashboard with live operational data.
+- Overview dashboard with live operational data, including a revenue-recovery/attention panel and an outreach-queue panel that surfaces open/due-today/overdue follow-up counts with a link into the Follow-ups taskboard.
 - Customers page with create/list behavior and customer detail signals. List + profile now surface the full `CustomerDetail` depth through new proxy routes: lifetime value, open-work and pipeline stats, and inline management of service addresses and equipment (add/remove), plus preferred-contact and SMS opt-in editing. New proxy routes under `apps/web/app/api/customers/[id]/addresses*` and `.../equipment*` mirror the customers `/[id]` pattern.
 - Jobs page with workflow actions.
 - Schedule page.

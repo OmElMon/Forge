@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  BellRing,
   BriefcaseBusiness,
   CalendarPlus,
   CircleDollarSign,
@@ -50,6 +51,13 @@ type Invoice = {
   status: InvoiceStatus;
   title: string;
   amount_cents: number;
+  due_at: string | null;
+};
+
+type FollowupTask = {
+  id: string;
+  title: string;
+  status: "open" | "resolved";
   due_at: string | null;
 };
 
@@ -167,6 +175,7 @@ export default function DashboardPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [attentionSummary, setAttentionSummary] = useState<AttentionSummary>(emptyAttentionSummary);
+  const [followups, setFollowups] = useState<FollowupTask[]>([]);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -182,24 +191,28 @@ export default function DashboardPage() {
           invoicesResponse,
           techniciansResponse,
           attentionResponse,
+          followupsResponse,
         ] = await Promise.all([
           fetch("/api/customers", { cache: "no-store" }),
           fetch("/api/jobs", { cache: "no-store" }),
           fetch("/api/invoices", { cache: "no-store" }),
           fetch("/api/technicians", { cache: "no-store" }),
           fetch("/api/attention?limit=6", { cache: "no-store" }),
+          fetch("/api/followups", { cache: "no-store" }),
         ]);
         const customersPayload = await readApiResponse(customersResponse);
         const jobsPayload = await readApiResponse(jobsResponse);
         const invoicesPayload = await readApiResponse(invoicesResponse);
         const techniciansPayload = await readApiResponse(techniciansResponse);
         const attentionPayload = await readApiResponse(attentionResponse);
+        const followupsPayload = await readApiResponse(followupsResponse);
         if (
           !customersResponse.ok ||
           !jobsResponse.ok ||
           !invoicesResponse.ok ||
           !techniciansResponse.ok ||
-          !attentionResponse.ok
+          !attentionResponse.ok ||
+          !followupsResponse.ok
         ) {
           setError("CrewPilot OS could not load the latest operations data.");
           return;
@@ -209,6 +222,7 @@ export default function DashboardPage() {
         setInvoices(invoicesPayload as Invoice[]);
         setTechnicians(techniciansPayload as Technician[]);
         setAttentionSummary(attentionPayload as AttentionSummary);
+        setFollowups(followupsPayload as FollowupTask[]);
       } catch {
         setError("CrewPilot OS could not reach the operations service.");
       } finally {
@@ -240,6 +254,14 @@ export default function DashboardPage() {
   const activeTechnicians = technicians.filter((technician) => technician.status !== "off_today").length;
   const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
   const ownerName = principal?.full_name.trim().split(/\s+/)[0] || "there";
+  const openFollowups = followups.filter((followup) => followup.status === "open");
+  const followupsDueToday = openFollowups.filter(
+    (followup) =>
+      followup.due_at && dateKey(new Date(followup.due_at)) === dateKey(today),
+  );
+  const followupsOverdue = openFollowups.filter(
+    (followup) => followup.due_at && new Date(followup.due_at).getTime() < today.getTime(),
+  );
   const paidRevenueCents = invoices
     .filter((invoice) => invoice.document_type === "invoice" && invoice.status === "paid")
     .reduce((total, invoice) => total + invoice.amount_cents, 0);
@@ -364,6 +386,54 @@ export default function DashboardPage() {
               <span>{availableTechnicians} available</span>
               <span>{unassignedJobs.length} jobs unassigned</span>
             </div>
+          </article>
+          <article className="rounded-xl border bg-white p-5 shadow-panel">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Outreach queue</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  Follow-up tasks raised by the automation layer.
+                </p>
+              </div>
+              <span className="grid size-9 place-items-center rounded-lg bg-violet-50 text-violet-700">
+                <BellRing className="size-4" />
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="rounded-xl bg-violet-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Open</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-950">
+                  {loading ? "—" : openFollowups.length}
+                </p>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Due today</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-950">
+                  {loading ? "—" : followupsDueToday.length}
+                </p>
+              </div>
+              <div className="rounded-xl bg-rose-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Overdue</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-950">
+                  {loading ? "—" : followupsOverdue.length}
+                </p>
+              </div>
+            </div>
+            {!loading && openFollowups.length > 0 ? (
+              <Link
+                href="/dashboard/followups"
+                className="mt-4 flex items-center justify-between rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-200 hover:bg-violet-50"
+              >
+                <span className="text-sm font-semibold text-violet-800">
+                  {openFollowups.length} follow-up{openFollowups.length === 1 ? "" : "s"} in the queue
+                </span>
+                <span className="text-sm font-semibold text-violet-700">Review →</span>
+              </Link>
+            ) : (
+              <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-gray-500">
+                Clean outreach queue. No follow-ups need a nudge right now.
+              </div>
+            )}
           </article>
           <article className="rounded-xl border bg-white p-5 shadow-panel">
             <div className="flex items-start justify-between gap-3">
