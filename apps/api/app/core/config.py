@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     payments_provider: str = "disabled"
     accounting_provider: str = "disabled"
 
+    rate_limiting_enabled: bool = True
+    rate_limit_auth_per_minute: int = 30
+    rate_limit_api_per_minute: int = 200
+
 
 @lru_cache
 def get_settings() -> Settings:

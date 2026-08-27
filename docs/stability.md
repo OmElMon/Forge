@@ -21,6 +21,7 @@ Before chasing product bugs, verify the platform assumptions:
 4. Render `CORS_ORIGINS` includes the exact Netlify frontend URL.
 5. Netlify `API_INTERNAL_URL` points to the Render API `/api/v1` URL.
 6. Alembic migrations completed during the latest Render deploy.
+7. Rate limiting is active behind the proxy: auth endpoints cap at 30 req/min/IP and the general API at 200 req/min/IP (`rate_limit_auth_per_minute`, `rate_limit_api_per_minute`). Health/status/ready are exempt; a single API instance keeps counters in-process.
 
 ## Production status surface
 

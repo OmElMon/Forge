@@ -77,7 +77,8 @@ Backend:
 - Workspace registration and login.
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
-- Alembic migrations through `20260827_0014`.
+- Alembic migrations through `20260827_0015`.
+- Rate limiting (in-process, keyed by client IP via `X-Forwarded-For`): auth endpoints capped at `rate_limit_auth_per_minute` (default 30/min) and the general API at `rate_limit_api_per_minute` (default 200/min), returning 429 + `Retry-After`. Health/ready/status/openapi/docs/root are exempt. Toggle with `rate_limiting_enabled`; counters are per-process (swap for a shared store when scaling beyond one API instance).
 - Integration-ready adapter boundaries (no live providers): ports in `app/services/integrations.py` (messaging/voice/payments/accounting), disabled-by-default adapter stubs in `app/integrations/`, env-gated via `settings.*_provider`, per-adapter event contracts in `docs/integration-contracts.md`. Activation is manual-only (user owns provider accounts/webhooks).
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
