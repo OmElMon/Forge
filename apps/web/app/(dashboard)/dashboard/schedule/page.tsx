@@ -7,9 +7,10 @@ import {
   CircleDollarSign,
   Clock3,
   LoaderCircle,
-  ReceiptText,
   Route,
+  ReceiptText,
   Search,
+  Sparkles,
   UserRound,
   Wrench,
 } from "lucide-react";
@@ -42,6 +43,17 @@ type Job = {
   amount_cents: number;
   technician_name: string | null;
   notes: string | null;
+};
+
+type DispatchSuggestion = {
+  technician_id: string;
+  technician_name: string;
+  status: string;
+  confidence: number;
+  skill_match: string[];
+  skill_missing: string[];
+  load_conflicts: number;
+  reasons: string[];
 };
 
 const statusStyles: Record<JobStatus, string> = {
@@ -150,6 +162,8 @@ export default function SchedulePage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [bestFitById, setBestFitById] = useState<Record<string, DispatchSuggestion>>({});
+  const [bestFitLoading, setBestFitLoading] = useState(false);
 
   const customerById = useMemo(
     () => new Map(customers.map((customer) => [customer.id, customer])),
@@ -159,6 +173,27 @@ export default function SchedulePage() {
     () => new Map(technicians.map((technician) => [technician.id, technician])),
     [technicians],
   );
+
+  async function loadBestFit(openJobs: Job[]) {
+    setBestFitLoading(true);
+    try {
+      const results = await Promise.all(
+        openJobs.map(async (job) => {
+          const response = await fetch(`/api/dispatch/suggestions?job_id=${job.id}&limit=1`, {
+            cache: "no-store",
+          });
+          const payload = await readApiResponse(response);
+          if (!response.ok || !Array.isArray(payload) || payload.length === 0) return null;
+          return [job.id, payload[0] as DispatchSuggestion] as const;
+        }),
+      );
+      setBestFitById(Object.fromEntries(results.filter(Boolean) as [string, DispatchSuggestion][]));
+    } catch {
+      setBestFitById({});
+    } finally {
+      setBestFitLoading(false);
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -187,6 +222,19 @@ export default function SchedulePage() {
       setCustomers(customersPayload as Customer[]);
       setJobs(jobsPayload as Job[]);
       setTechnicians(techniciansPayload as Technician[]);
+      const loadedJobs = jobsPayload as Job[];
+      const openUnscheduled = loadedJobs
+        .filter(
+          (job) =>
+            !job.scheduled_start &&
+            !job.technician_id &&
+            !job.technician_name &&
+            ["new", "scheduled", "in_progress"].includes(job.status),
+        )
+        .slice(0, 5);
+      if (openUnscheduled.length > 0) {
+        await loadBestFit(openUnscheduled);
+      }
     } catch {
       setError("CrewPilot OS could not load the schedule.");
     } finally {
@@ -498,21 +546,46 @@ export default function SchedulePage() {
 
           <section className="rounded-xl border bg-white p-5 shadow-panel">
             <h2 className="font-semibold">Unscheduled queue</h2>
-            <p className="mt-1 text-xs text-gray-500">Work that still needs a time slot.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Work that still needs a time slot, with best-fit technician suggestions.
+            </p>
             {unscheduledJobs.length === 0 ? (
               <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
                 No unscheduled jobs. Dispatch is clean.
               </p>
             ) : (
               <div className="mt-4 space-y-3">
-                {unscheduledJobs.slice(0, 5).map((job) => (
-                  <div key={job.id} className="rounded-lg border p-3">
-                    <p className="text-sm font-semibold">{job.title}</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {customerById.get(job.customer_id)?.name ?? "Unknown customer"}
-                    </p>
-                  </div>
-                ))}
+                {unscheduledJobs.slice(0, 5).map((job) => {
+                  const bestFit = bestFitById[job.id];
+                  return (
+                    <div key={job.id} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{job.title}</p>
+                        {bestFitLoading ? (
+                          <LoaderCircle className="size-3.5 animate-spin text-gray-400" />
+                        ) : bestFit ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                            <Sparkles className="size-3" />
+                            Best fit · {bestFit.technician_name}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {customerById.get(job.customer_id)?.name ?? "Unknown customer"}
+                      </p>
+                      {bestFit && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          {Math.round(bestFit.confidence * 100)}% match
+                          {bestFit.skill_match.length > 0
+                            ? ` · ${bestFit.skill_match.join(", ")}`
+                            : bestFit.skill_missing.length > 0
+                              ? " · missing skills tagged"
+                              : ""}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

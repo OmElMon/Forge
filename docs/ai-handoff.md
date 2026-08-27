@@ -100,7 +100,7 @@ Frontend:
 - Activity page: tenant-wide audit timeline (newest first, grouped by day) backed by `/api/audit-logs?limit=200`, with resource-type filter chips and human-readable action labels/icons.
 - Customers page with create/list behavior and customer detail signals. List + profile now surface the full `CustomerDetail` depth through new proxy routes: lifetime value, open-work and pipeline stats, and inline management of service addresses and equipment (add/remove), plus preferred-contact and SMS opt-in editing. New proxy routes under `apps/web/app/api/customers/[id]/addresses*` and `.../equipment*` mirror the customers `/[id]` pattern.
 - Jobs page with workflow actions.
-- Schedule page.
+- Schedule page surfaced dispatch optimization: the Unscheduled queue now shows a best-fit technician recommendation per open job (via `GET /dispatch/suggestions?job_id=...&limit=1`), with match % and matched/missing skills.
 - Technicians page with workload/availability signals.
 - Invoices page with estimate/invoice workflow.
 - Analytics page wired to the analytics summary API.
