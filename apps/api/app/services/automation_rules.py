@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -5,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.customer import Customer
 from app.models.domain_event import DomainEvent
 from app.models.enums import (
     DomainAggregateType,
@@ -15,15 +17,23 @@ from app.models.enums import (
 from app.models.followup_task import FollowupTask
 from app.schemas.principal import Principal
 from app.services.events import emit_domain_event
+from app.services.integrations import (
+    MessageChannel,
+    OutboundMessage,
+    SendResult,
+    get_messaging_provider,
+)
 
 LOOKBACK_DAYS = 90
 ESTIMATE_FOLLOWUP_DUE_DAYS = 5
 ESTIMATE_CONVERT_DUE_DAYS = 3
 INVOICE_PAYMENT_FOLLOWUP_DAYS = 14
+JOB_INVOICE_FOLLOWUP_DAYS = 2
 
 RULE_ESTIMATE_SENT = "estimate.sent"
 RULE_ESTIMATE_APPROVED = "estimate.approved"
 RULE_INVOICE_SENT = "invoice.sent"
+RULE_INVOICE_CREATE = "invoice.create"
 
 
 @dataclass(frozen=True)
@@ -48,10 +58,16 @@ INVOICE_SENT_RULE = FollowupRule(
     title="Invoice awaiting payment",
     due_days=INVOICE_PAYMENT_FOLLOWUP_DAYS,
 )
+JOB_INVOICE_RULE = FollowupRule(
+    rule_type=RULE_INVOICE_CREATE,
+    title="Job completed — create and send invoice",
+    due_days=JOB_INVOICE_FOLLOWUP_DAYS,
+)
 
 ROUTED_EVENT_TYPES = {
     DomainEventType.INVOICE_SENT.value,
     DomainEventType.ESTIMATE_APPROVED.value,
+    DomainEventType.JOB_COMPLETED.value,
 }
 
 
@@ -65,6 +81,8 @@ def rule_spec_for_event(event: DomainEvent) -> FollowupRule | None:
         return None
     if event.event_type == DomainEventType.ESTIMATE_APPROVED.value:
         return ESTIMATE_APPROVED_RULE
+    if event.event_type == DomainEventType.JOB_COMPLETED.value:
+        return JOB_INVOICE_RULE
     return None
 
 
@@ -174,7 +192,11 @@ def _build_followup(
             if event.aggregate_type == DomainAggregateType.INVOICE.value
             else _coerce_uuid(payload.get("invoice_id"))
         ),
-        job_id=_coerce_uuid(payload.get("job_id")),
+        job_id=(
+            event.aggregate_id
+            if event.aggregate_type == DomainAggregateType.JOB.value
+            else _coerce_uuid(payload.get("job_id"))
+        ),
         rule_type=rule.rule_type,
         title=rule.title,
         notes=payload.get("title"),
@@ -252,6 +274,7 @@ async def deliver_due_followups(
             principal,
             aggregate_id=followup.id,
             aggregate_type=DomainAggregateType.FOLLOWUP,
+            correlation_id=followup.id,
             event_type=DomainEventType.FOLLOWUP_DUE,
             payload={
                 "customer_id": followup.customer_id,
@@ -263,6 +286,87 @@ async def deliver_due_followups(
             },
             source="automation",
         )
+    return delivered
+
+
+def followup_recipient(customer: Customer) -> tuple[MessageChannel, str] | None:
+    """Resolve a customer's reachable channel honoring SMS opt-in."""
+    if customer.sms_opt_in and customer.phone:
+        return MessageChannel.SMS, customer.phone
+    if customer.email:
+        return MessageChannel.EMAIL, customer.email
+    return None
+
+
+def _followup_message_body(followup: FollowupTask) -> str:
+    due = followup.due_at.date() if followup.due_at else "soon"
+    return f"{followup.title} — due {due}"
+
+
+async def send_due_followup_messages(
+    db: AsyncSession,
+    principal: Principal,
+    delivered: Sequence[FollowupTask],
+) -> list[SendResult]:
+    """Send due follow-up reminders through the messaging port.
+
+    Recipients come from each customer's reachable contact. Skipped when the
+    customer is missing or has no reachable channel. The port is disabled by
+    default, so this is a no-op until a messaging adapter is configured.
+    """
+    customer_ids = {task.customer_id for task in delivered if task.customer_id is not None}
+    if not customer_ids:
+        return []
+    result = await db.execute(
+        select(Customer).where(
+            Customer.company_id == principal.company_id,
+            Customer.id.in_(customer_ids),
+        )
+    )
+    customers = {customer.id: customer for customer in result.scalars().all()}
+    provider = get_messaging_provider()
+    sent: list[SendResult] = []
+    for followup in delivered:
+        if followup.customer_id is None:
+            continue
+        customer = customers.get(followup.customer_id)
+        if customer is None:
+            continue
+        recipient = followup_recipient(customer)
+        if recipient is None:
+            continue
+        channel, to = recipient
+        sent.append(
+            provider.send(
+                OutboundMessage(
+                    to=to,
+                    channel=channel,
+                    body=_followup_message_body(followup),
+                    company_id=principal.company_id,
+                    correlation_id=followup.id,
+                    subject=followup.title,
+                )
+            )
+        )
+    return sent
+
+
+async def run_followup_automation(
+    db: AsyncSession,
+    principal: Principal,
+    *,
+    now: datetime | None = None,
+) -> list[FollowupTask]:
+    """One idempotent automation pass: materialize, deliver due, notify.
+
+    Messaging is tied to delivery inside a single pass so each follow-up is
+    notified exactly once regardless of whether the API or the sweep triggered
+    the pass.
+    """
+    current_time = now or datetime.now(UTC)
+    await materialize_pending_followups(db, principal, now=current_time)
+    delivered = await deliver_due_followups(db, principal, now=current_time)
+    await send_due_followup_messages(db, principal, delivered)
     return delivered
 
 

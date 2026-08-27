@@ -49,6 +49,5 @@ async def _sweep_all() -> None:
                 company_name=company.name,
                 role=role,
             )
-            await automation_rules.materialize_pending_followups(db, principal)
-            await automation_rules.deliver_due_followups(db, principal)
+            await automation_rules.run_followup_automation(db, principal)
             await db.commit()

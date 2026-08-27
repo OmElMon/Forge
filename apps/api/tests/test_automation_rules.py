@@ -1,8 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from pytest import MonkeyPatch
+
+from app.integrations.messaging import RecordingMessagingProvider
+from app.models.customer import Customer
 from app.models.domain_event import DomainEvent
 from app.models.enums import (
+    CustomerStatus,
     DomainAggregateType,
     DomainEventType,
     FollowupTaskStatus,
@@ -11,17 +16,23 @@ from app.models.enums import (
 )
 from app.models.followup_task import FollowupTask
 from app.schemas.principal import Principal
+from app.services import automation_rules
 from app.services.automation_rules import (
     ESTIMATE_APPROVED_RULE,
     ESTIMATE_SENT_RULE,
     INVOICE_SENT_RULE,
+    JOB_INVOICE_RULE,
     RULE_ESTIMATE_SENT,
+    RULE_INVOICE_CREATE,
     deliver_due_followups,
+    followup_recipient,
     followup_unique_key,
     materialize_pending_followups,
     resolve_followup,
     rule_spec_for_event,
+    run_followup_automation,
 )
+from app.services.integrations import MessageChannel
 
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=UTC)
 
@@ -44,13 +55,14 @@ def make_event(
     event_type: DomainEventType,
     *,
     aggregate_id: object,
+    aggregate_type: DomainAggregateType = DomainAggregateType.INVOICE,
     payload: dict[str, object] | None = None,
     occurred_at: datetime | None = None,
     correlation_id: object = None,
 ) -> DomainEvent:
     return DomainEvent(
         aggregate_id=aggregate_id,  # type: ignore[arg-type]
-        aggregate_type=DomainAggregateType.INVOICE.value,
+        aggregate_type=aggregate_type.value,
         correlation_id=correlation_id,  # type: ignore[arg-type]
         company_id=COMPANY_ID,
         event_type=event_type.value,
@@ -73,10 +85,15 @@ class ScalarRows:
 
 class FakeSession:
     def __init__(
-        self, *, events: list[object] | None = None, open_followups: list[object] | None = None
+        self,
+        *,
+        events: list[object] | None = None,
+        open_followups: list[object] | None = None,
+        customers: list[object] | None = None,
     ) -> None:
         self.events = list(events or [])
         self.open_followups = list(open_followups or [])
+        self.customers = list(customers or [])
         self.added: list[object] = []
 
     async def execute(self, statement):
@@ -88,6 +105,8 @@ class FakeSession:
                 obj for obj in self.added if isinstance(obj, FollowupTask)
             ]
             return ScalarRows(loaded)
+        if "customers" in text:
+            return ScalarRows(self.customers)
         return ScalarRows([])
 
     def add(self, obj: object) -> None:
@@ -131,7 +150,7 @@ def test_estimate_approved_maps_to_convert_rule() -> None:
 
 def test_unrelated_events_match_no_rule() -> None:
     unrelated = [
-        make_event(DomainEventType.JOB_COMPLETED, aggregate_id=uuid4()),
+        make_event(DomainEventType.JOB_STARTED, aggregate_id=uuid4()),
         make_event(DomainEventType.CUSTOMER_CREATED, aggregate_id=uuid4()),
         make_event(
             DomainEventType.INVOICE_SENT,
@@ -140,6 +159,16 @@ def test_unrelated_events_match_no_rule() -> None:
         ),
     ]
     assert all(rule_spec_for_event(event) is None for event in unrelated)
+
+
+def test_job_completed_maps_to_invoice_creation_rule() -> None:
+    event = make_event(
+        DomainEventType.JOB_COMPLETED,
+        aggregate_id=uuid4(),
+        aggregate_type=DomainAggregateType.JOB,
+        payload={"customer_id": str(uuid4()), "title": "Furnace replacement"},
+    )
+    assert rule_spec_for_event(event) == JOB_INVOICE_RULE
 
 
 def make_overdue_followup() -> FollowupTask:
@@ -210,6 +239,132 @@ async def test_deliver_is_idempotent_for_already_delivered() -> None:
 
     assert delivered == []
     assert added_events(session) == []
+
+
+async def test_job_completed_materializes_invoice_creation_followup() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.JOB_COMPLETED,
+                aggregate_id=job_id,
+                aggregate_type=DomainAggregateType.JOB,
+                payload={"customer_id": str(customer_id), "title": "Furnace replacement"},
+            )
+        ]
+    )
+
+    created = await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    (followup,) = created
+    assert followup.job_id == job_id
+    assert followup.customer_id == customer_id
+    assert followup.invoice_id is None
+    assert followup.rule_type == RULE_INVOICE_CREATE
+    assert followup.title == "Job completed — create and send invoice"
+    assert followup.unique_key == followup_unique_key(RULE_INVOICE_CREATE, job_id)
+    assert followup.due_at is not None
+    assert followup.due_at.date() == (NOW + timedelta(days=2)).date()
+
+
+def test_followup_recipient_honors_sms_opt_in_and_falls_back_to_email() -> None:
+    sms_customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="SMS Only",
+        phone="+15550123",
+        sms_opt_in=True,
+        status=CustomerStatus.ACTIVE,
+    )
+    email_customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="Email Only",
+        email="owner@example.com",
+        sms_opt_in=False,
+        status=CustomerStatus.ACTIVE,
+    )
+    unreachable_customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="Unreachable",
+        sms_opt_in=False,
+        status=CustomerStatus.ACTIVE,
+    )
+
+    assert followup_recipient(sms_customer) == (MessageChannel.SMS, "+15550123")
+    assert followup_recipient(email_customer) == (MessageChannel.EMAIL, "owner@example.com")
+    assert followup_recipient(unreachable_customer) is None
+
+
+async def test_due_delivery_sends_message_via_messaging_port(monkeypatch: MonkeyPatch) -> None:
+    customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="Sarah",
+        phone="+15550123",
+        sms_opt_in=True,
+        status=CustomerStatus.ACTIVE,
+    )
+    followup = make_overdue_followup()
+    followup.customer_id = customer.id
+    session = FakeSession(open_followups=[followup], customers=[customer])
+    provider = RecordingMessagingProvider()
+    monkeypatch.setattr(automation_rules, "get_messaging_provider", lambda: provider)
+
+    delivered = await run_followup_automation(session, make_principal(), now=NOW)
+
+    assert len(delivered) == 1
+    (message,) = provider.sent
+    assert message.correlation_id == followup.id
+    assert message.channel == MessageChannel.SMS
+    assert message.to == "+15550123"
+    assert followup.title in message.body
+    assert message.company_id == COMPANY_ID
+
+
+async def test_due_message_sends_exactly_once(monkeypatch: MonkeyPatch) -> None:
+    customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="Sarah",
+        phone="+15550123",
+        sms_opt_in=True,
+        status=CustomerStatus.ACTIVE,
+    )
+    followup = make_overdue_followup()
+    followup.customer_id = customer.id
+    session = FakeSession(open_followups=[followup], customers=[customer])
+    provider = RecordingMessagingProvider()
+    monkeypatch.setattr(automation_rules, "get_messaging_provider", lambda: provider)
+
+    first = await run_followup_automation(session, make_principal(), now=NOW)
+    second = await run_followup_automation(session, make_principal(), now=NOW)
+
+    assert len(first) == 1
+    assert second == []
+    assert len(provider.sent) == 1
+
+
+async def test_unreachable_customer_skips_send(monkeypatch: MonkeyPatch) -> None:
+    customer = Customer(
+        company_id=COMPANY_ID,
+        id=uuid4(),
+        name="Unreachable",
+        sms_opt_in=False,
+        status=CustomerStatus.ACTIVE,
+    )
+    followup = make_overdue_followup()
+    followup.customer_id = customer.id
+    session = FakeSession(open_followups=[followup], customers=[customer])
+    provider = RecordingMessagingProvider()
+    monkeypatch.setattr(automation_rules, "get_messaging_provider", lambda: provider)
+
+    delivered = await run_followup_automation(session, make_principal(), now=NOW)
+
+    assert len(delivered) == 1
+    assert provider.sent == []
 
 
 def test_unique_key_is_stable_per_rule_and_aggregate() -> None:

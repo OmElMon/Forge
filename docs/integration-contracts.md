@@ -31,6 +31,12 @@ interfaces + contracts.
   `app/services/integrations.py`; adapters in `app/integrations/messaging.py`.
 - Inbound events: `followup.due` (deliver the reminder), `invoice.sent`
   (payment-invite message).
+- Delivery: when a follow-up crosses `due_at`, the automation pass
+  (`run_followup_automation`) watermarks `delivered_at` and calls the messaging
+  port with the follow-up's `correlation_id`, so exactly one outbound message is
+  produced per due follow-up. Recipient resolution honors `preferred_contact`
+  and `sms_opt_in` (SMS when opted-in with a phone, else email; skipped when
+  unreachable).
 - Outbound events: none (provider-side delivery receipts are logged, not
   streamed) — a future `message.delivered` may be added when delivery tracking ships.
 - Channels: `MessageChannel.SMS | EMAIL`; subject only for email.
