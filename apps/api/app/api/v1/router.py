@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     auth,
     customers,
     events,
+    followups,
     health,
     invoices,
     jobs,
@@ -24,3 +25,4 @@ api_router.include_router(attention.router)
 api_router.include_router(analytics.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(events.router)
+api_router.include_router(followups.router)

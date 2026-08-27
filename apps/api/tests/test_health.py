@@ -29,11 +29,11 @@ class FakeSession:
 
 
 async def healthy_db_override():
-    yield FakeSession("20260827_0011")
+    yield FakeSession("20260827_0012")
 
 
 async def stale_db_override():
-    yield FakeSession("20260827_0010")
+    yield FakeSession("20260827_0011")
 
 
 def test_status_reports_database_and_migration_health() -> None:
@@ -48,8 +48,8 @@ def test_status_reports_database_and_migration_health() -> None:
     assert payload["status"] == "ok"
     assert payload["app"] == "CrewPilot OS API"
     assert payload["checks"]["database"]["status"] == "ok"
-    assert payload["checks"]["migrations"]["current"] == "20260827_0011"
-    assert payload["checks"]["migrations"]["head"] == "20260827_0011"
+    assert payload["checks"]["migrations"]["current"] == "20260827_0012"
+    assert payload["checks"]["migrations"]["head"] == "20260827_0012"
     assert payload["checks"]["migrations"]["status"] == "ok"
 
 

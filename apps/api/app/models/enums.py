@@ -54,6 +54,11 @@ class TechnicianStatus(StrEnum):
     OFF_TODAY = "off_today"
 
 
+class FollowupTaskStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
 class DomainEventType(StrEnum):
     CUSTOMER_CREATED = "customer.created"
     CUSTOMER_UPDATED = "customer.updated"
@@ -83,6 +88,8 @@ class DomainEventType(StrEnum):
     INVOICE_LINE_ITEM_ADDED = "invoice.line_item.added"
     INVOICE_LINE_ITEM_UPDATED = "invoice.line_item.updated"
     INVOICE_LINE_ITEM_REMOVED = "invoice.line_item.deleted"
+    FOLLOWUP_CREATED = "followup.created"
+    FOLLOWUP_RESOLVED = "followup.resolved"
 
 
 class DomainAggregateType(StrEnum):
@@ -90,3 +97,4 @@ class DomainAggregateType(StrEnum):
     TECHNICIAN = "technician"
     JOB = "job"
     INVOICE = "invoice"
+    FOLLOWUP = "followup"
