@@ -29,6 +29,19 @@ Global tables are limited to platform identity and operational metadata. Tenant 
 - Platform: audit log, files, notifications, automations, integrations
 - Intelligence: conversations, agent runs, tool calls, recommendations
 
+### Integrations
+
+External systems connect through adapter ports defined in
+`apps/api/app/services/integrations.py` (stable seams that domain services
+depend on) with concrete adapters under `apps/api/app/integrations/`. Every
+provider resolves by name from `settings.*_provider` and defaults to a disabled
+no-op adapter, so landing adapters is behavior-neutral. The `/events` stream is
+the integration surface: adapters consume and emit typed `DomainEventType`s with
+correlation IDs and `company_id` tenancy, and never bypass authorization.
+Activation (licenses, billing, webhook registration) is manual user work. See
+[integration-contracts.md](integration-contracts.md) for each adapter's event
+contract.
+
 Business lifecycle changes are also emitted as typed, append-only domain events in a tenant-scoped event stream. The event stream is the normalized input for workflow automation and AI features; it carries a stable event type, aggregate reference, actor, and JSON payload, and uses correlation IDs to group multi-step transitions. AI capabilities consume domain services and emit audited domain events. They do not bypass authorization or write directly to business tables.
 
 ## API conventions

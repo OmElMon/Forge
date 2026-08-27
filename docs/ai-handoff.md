@@ -78,6 +78,7 @@ Backend:
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
 - Alembic migrations through `20260827_0014`.
+- Integration-ready adapter boundaries (no live providers): ports in `app/services/integrations.py` (messaging/voice/payments/accounting), disabled-by-default adapter stubs in `app/integrations/`, env-gated via `settings.*_provider`, per-adapter event contracts in `docs/integration-contracts.md`. Activation is manual-only (user owns provider accounts/webhooks).
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
 - Invoice workflows: send, approve, convert estimate to invoice, mark paid, void/reopen style transitions.
@@ -183,10 +184,9 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 ## Current recommended build queue
 
-The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and calendar/dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). A scheduled/proactive delivery pass is now in place too: beat-driven `automation.followup_sweep` sweeps every company and a `followup.due` watermark delivers each open follow-up exactly once. Remaining highest-value next slices:
+The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and calendar/dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). A scheduled/proactive delivery pass is now in place too: beat-driven `automation.followup_sweep` sweeps every company and a `followup.due` watermark delivers each open follow-up exactly once. Integration-ready boundaries shipped: adapter ports live in `app/services/integrations.py`, disabled-by-default stub adapters in `app/integrations/` (messaging, voice, payments, accounting), provider choice gated by `settings.*_provider`, and per-adapter event contracts documented in `docs/integration-contracts.md`. Remaining highest-value next slices:
 
-1. Workflow automation rules depth (continued) — more rule types (job completed → invoice nudge), message delivery (email/SMS adapters; next step after integration boundaries).
-2. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
+1. Message delivery — keep `followup.due` (and `invoice.sent`) flowing through the messaging port (`messaging_provider` already accepts a `recording` fake and will accept real adapters); more rule types (job completed → create & send invoice).
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 

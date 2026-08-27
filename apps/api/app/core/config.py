@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    messaging_provider: str = "disabled"
+    voice_provider: str = "disabled"
+    payments_provider: str = "disabled"
+    accounting_provider: str = "disabled"
+
 
 @lru_cache
 def get_settings() -> Settings:
