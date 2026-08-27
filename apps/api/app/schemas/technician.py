@@ -37,3 +37,15 @@ class TechnicianRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TechnicianWorkload(BaseModel):
+    technician_id: UUID
+    technician_name: str
+    status: TechnicianStatus
+    open_job_count: int = 0
+    in_progress_job_count: int = 0
+    scheduled_job_count: int = 0
+    next_scheduled_start: datetime | None = None
+    current_job_title: str | None = None
+    computed_at: datetime | None = None

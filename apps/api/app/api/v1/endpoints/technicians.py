@@ -7,10 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.enums import DomainAggregateType, DomainEventType
+from app.models.job import Job
 from app.models.technician import Technician
 from app.schemas.principal import Principal
-from app.schemas.technician import TechnicianCreate, TechnicianRead, TechnicianUpdate
+from app.schemas.technician import (
+    TechnicianCreate,
+    TechnicianRead,
+    TechnicianUpdate,
+    TechnicianWorkload,
+)
+from app.services.dispatch import OPEN_JOB_STATUSES
 from app.services.events import emit_domain_event
+from app.services.workload import build_technician_workload
 
 router = APIRouter(prefix="/technicians", tags=["technicians"])
 
@@ -83,6 +91,26 @@ async def read_technician(
     principal: Principal = Depends(get_principal),
 ) -> Technician:
     return await get_company_technician(technician_id, db, principal)
+
+
+@router.get("/{technician_id}/workload", response_model=TechnicianWorkload)
+async def read_technician_workload(
+    technician_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> TechnicianWorkload:
+    technician = await get_company_technician(technician_id, db, principal)
+    jobs_result = await db.execute(
+        select(Job).where(
+            Job.company_id == principal.company_id,
+            Job.technician_id == technician_id,
+            Job.status.in_(OPEN_JOB_STATUSES),
+        )
+    )
+    return build_technician_workload(
+        technician=technician,
+        jobs=jobs_result.scalars().all(),  # type: ignore[arg-type]
+    )
 
 
 @router.patch("/{technician_id}", response_model=TechnicianRead)
