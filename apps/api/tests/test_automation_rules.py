@@ -16,6 +16,7 @@ from app.services.automation_rules import (
     ESTIMATE_SENT_RULE,
     INVOICE_SENT_RULE,
     RULE_ESTIMATE_SENT,
+    deliver_due_followups,
     followup_unique_key,
     materialize_pending_followups,
     resolve_followup,
@@ -139,6 +140,76 @@ def test_unrelated_events_match_no_rule() -> None:
         ),
     ]
     assert all(rule_spec_for_event(event) is None for event in unrelated)
+
+
+def make_overdue_followup() -> FollowupTask:
+    return FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=uuid4(),
+        rule_type=RULE_ESTIMATE_SENT,
+        title="Estimate awaiting follow-up",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_ESTIMATE_SENT, uuid4()),
+        due_at=NOW - timedelta(days=2),
+    )
+
+
+async def test_deliver_due_marks_delivered_and_emits_event() -> None:
+    followup = make_overdue_followup()
+    session = FakeSession(open_followups=[followup])
+
+    delivered = await deliver_due_followups(session, make_principal(), now=NOW)
+
+    (due,) = delivered
+    assert due.id == followup.id
+    assert due.delivered_at == NOW
+
+    (event,) = added_events(session)
+    assert event.event_type == DomainEventType.FOLLOWUP_DUE.value
+    assert event.source == "automation"
+    assert event.aggregate_id == followup.id
+    assert event.payload["rule_type"] == RULE_ESTIMATE_SENT
+    assert event.payload["title"] == "Estimate awaiting follow-up"
+
+
+async def test_deliver_skips_future_due_and_resolved() -> None:
+    not_due = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=uuid4(),
+        rule_type=RULE_ESTIMATE_SENT,
+        title="Estimate awaiting follow-up",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_ESTIMATE_SENT, uuid4()),
+        due_at=NOW + timedelta(days=5),
+    )
+    resolved = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=uuid4(),
+        rule_type=RULE_ESTIMATE_SENT,
+        title="Estimate awaiting follow-up",
+        status=FollowupTaskStatus.RESOLVED,
+        unique_key=followup_unique_key(RULE_ESTIMATE_SENT, uuid4()),
+        due_at=NOW - timedelta(days=1),
+    )
+    session = FakeSession(open_followups=[not_due, resolved])
+
+    delivered = await deliver_due_followups(session, make_principal(), now=NOW)
+
+    assert delivered == []
+    assert not_due.delivered_at is None
+    assert resolved.delivered_at is None
+    assert added_events(session) == []
+
+
+async def test_deliver_is_idempotent_for_already_delivered() -> None:
+    followup = make_overdue_followup()
+    followup.delivered_at = NOW
+    session = FakeSession(open_followups=[followup])
+
+    delivered = await deliver_due_followups(session, make_principal(), now=NOW)
+
+    assert delivered == []
+    assert added_events(session) == []
 
 
 def test_unique_key_is_stable_per_rule_and_aggregate() -> None:

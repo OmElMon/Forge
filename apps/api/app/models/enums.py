@@ -89,6 +89,7 @@ class DomainEventType(StrEnum):
     INVOICE_LINE_ITEM_UPDATED = "invoice.line_item.updated"
     INVOICE_LINE_ITEM_REMOVED = "invoice.line_item.deleted"
     FOLLOWUP_CREATED = "followup.created"
+    FOLLOWUP_DUE = "followup.due"
     FOLLOWUP_RESOLVED = "followup.resolved"
 
 

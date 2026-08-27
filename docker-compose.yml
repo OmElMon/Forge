@@ -51,6 +51,16 @@ services:
         condition: service_healthy
     command: celery -A app.worker.celery worker --loglevel=INFO
 
+  beat:
+    build: ./apps/api
+    env_file: .env
+    volumes:
+      - ./apps/api:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.worker.celery beat --loglevel=INFO
+
   web:
     build: ./apps/web
     environment:

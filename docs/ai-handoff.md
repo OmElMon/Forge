@@ -77,13 +77,14 @@ Backend:
 - Workspace registration and login.
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
-- Alembic migrations through `20260827_0013`.
+- Alembic migrations through `20260827_0014`.
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
 - Invoice workflows: send, approve, convert estimate to invoice, mark paid, void/reopen style transitions.
 - Typed, tenant-scoped domain event stream (`/events`) emitted alongside audits for intake, follow-up, dispatch, estimate, invoice, and customer-touch lifecycles. Append-only, JSON payloads, correlation IDs link multi-step transitions (e.g. estimate convert → invoice).
 - Customer profile depth: contact preferences (`preferred_contact`, `sms_opt_in`), service addresses, and equipment records on customers. `GET /customers/{id}` returns a `CustomerDetail` payload with lifetime value, paid invoice count, open work counts, open estimate/open invoice pipeline totals, plus the customer's addresses and equipment. Address and equipment CRUD under `/customers/{id}/addresses` and `/customers/{id}/equipment` are tenant-scoped and emit `customer.*` events + audit records.
-- Workflow automation rules (first consumer of `/events`): an idempotent `automation_rules` service scans the tenant's event stream and materializes tenant-scoped follow-up tasks for estimate-sent, estimate-approved, and invoice-sent transitions. Estimate approval auto-resolves the earlier "awaiting follow-up" task. `GET /followups` materializes pending follow-ups before listing (works without a background worker); `POST /followups/{id}/resolve` closes them with an audit record and emits `followup.created`/`followup.resolved` stream events. Dedupe: partial unique index on `(company_id, unique_key)` for open tasks.
+- Workflow automation rules (first consumer of `/events`): an idempotent `automation_rules` service scans the tenant's event stream and materializes tenant-scoped follow-up tasks for estimate-sent, estimate-approved, and invoice-sent transitions. Estimate approval auto-resolves the earlier "awaiting follow-up" task. `GET /followups` materializes and commits pending follow-ups before listing (works without a background worker); `POST /followups/{id}/resolve` closes them with an audit record and emits `followup.created`/`followup.resolved` stream events. Dedupe: partial unique index on `(company_id, unique_key)` for open tasks.
+- Scheduled/proactive delivery: each open follow-up is delivered exactly once when it crosses `due_at` — `deliver_due_followups` watermarks `delivered_at` and emits a typed `followup.due` stream event. `GET /followups` also runs due delivery, and a Celery beat schedule (`automation.followup_sweep` every 15m via the `beat` compose service, task in `app/worker_tasks.py`) sweeps all companies proactively so the queue stays current without web traffic. Tasks are thin wrappers; all logic stays in `automation_rules`. Message delivery (email/SMS adapters) is the next step after integration-ready boundaries.
 - Dispatch depth: `GET /dispatch/suggestions?job_id=...` ranks technicians for an open job by confidence from real signals — `required_skills` skill fit (jobs carry a `required_skills` JSONB list), technician availability status, and schedule load (overlapping `scheduled_start` windows; open-job load proxy when unscheduled). Read-only; assignment stays on the existing `/jobs/{id}/assign`.
 - Attention queue API for follow-up gaps and revenue risk.
 - Analytics summary API for revenue, pipeline, conversion, job, and customer metrics.
@@ -133,7 +134,7 @@ Core resources:
 - `/invoices`
 - `/audit-logs`
 - `/events` — AI/automation-readable event stream (filterable by `aggregate_type`, `aggregate_id`, `event_type`; newest first)
-- `/followups` — automation follow-up queue (`GET` materializes pending rules; `POST /followups/{id}/resolve`)
+- `/followups` — automation follow-up queue (`GET` materializes, delivers due, commits; `POST /followups/{id}/resolve`)
 - `/dispatch/suggestions` — read-only technician dispatch rankings for a job (`required_skills` fit, availability, schedule-load conflict)
 - `/attention`
 - `/analytics/summary`
@@ -182,9 +183,9 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 ## Current recommended build queue
 
-The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and calendar/dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). Remaining highest-value next slices:
+The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and calendar/dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). A scheduled/proactive delivery pass is now in place too: beat-driven `automation.followup_sweep` sweeps every company and a `followup.due` watermark delivers each open follow-up exactly once. Remaining highest-value next slices:
 
-1. Workflow automation rules depth — scheduled/proactive delivery (Celery beat exists in docker-compose via `celery -A app.worker.celery`), more rule types (job completed → invoice nudge), message delivery (next step after integration boundaries).
+1. Workflow automation rules depth (continued) — more rule types (job completed → invoice nudge), message delivery (email/SMS adapters; next step after integration boundaries).
 2. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.

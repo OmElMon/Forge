@@ -218,6 +218,54 @@ async def _resolve_estimate_sent_followups(
         )
 
 
+async def deliver_due_followups(
+    db: AsyncSession,
+    principal: Principal,
+    *,
+    now: datetime | None = None,
+) -> list[FollowupTask]:
+    """Deliver each open follow-up the first time it crosses its due date.
+
+    Marks the task with ``delivered_at`` (the watermark) and emits a typed
+    ``followup.due`` stream event so downstream notification adapters can react.
+    Idempotent: already-delivered tasks are never delivered twice.
+    """
+    current_time = now or datetime.now(UTC)
+    result = await db.execute(
+        select(FollowupTask).where(
+            FollowupTask.company_id == principal.company_id,
+            FollowupTask.status == FollowupTaskStatus.OPEN,
+        )
+    )
+    delivered: list[FollowupTask] = []
+    for followup in result.scalars().all():
+        if followup.status != FollowupTaskStatus.OPEN:
+            continue
+        if followup.due_at is None or followup.due_at > current_time:
+            continue
+        if followup.delivered_at is not None:
+            continue
+        followup.delivered_at = current_time
+        delivered.append(followup)
+        emit_domain_event(
+            db,
+            principal,
+            aggregate_id=followup.id,
+            aggregate_type=DomainAggregateType.FOLLOWUP,
+            event_type=DomainEventType.FOLLOWUP_DUE,
+            payload={
+                "customer_id": followup.customer_id,
+                "due_at": followup.due_at.isoformat() if followup.due_at else None,
+                "invoice_id": followup.invoice_id,
+                "job_id": followup.job_id,
+                "rule_type": followup.rule_type,
+                "title": followup.title,
+            },
+            source="automation",
+        )
+    return delivered
+
+
 async def resolve_followup(
     db: AsyncSession,
     principal: Principal,

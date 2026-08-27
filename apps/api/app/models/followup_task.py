@@ -58,6 +58,7 @@ class FollowupTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     unique_key: Mapped[str | None] = mapped_column(String(180))
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_by_user_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),

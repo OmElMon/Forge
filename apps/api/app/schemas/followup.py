@@ -17,6 +17,7 @@ class FollowupTaskRead(BaseModel):
     notes: str | None
     status: FollowupTaskStatus
     due_at: datetime | None
+    delivered_at: datetime | None
     resolved_at: datetime | None
     resolved_by_user_id: UUID | None
     created_at: datetime
