@@ -13,10 +13,13 @@ import {
   Phone,
   Plus,
   Search,
+  Trash2,
   UserRound,
+  Wrench,
 } from "lucide-react";
 
 type CustomerStatus = "lead" | "active" | "inactive";
+type PreferredContact = "" | "phone" | "email" | "sms";
 
 type Customer = {
   id: string;
@@ -25,6 +28,8 @@ type Customer = {
   email: string | null;
   status: CustomerStatus;
   source: string | null;
+  preferred_contact: PreferredContact;
+  sms_opt_in: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -61,6 +66,39 @@ type AuditLog = {
   resource_id: string | null;
   context: Record<string, unknown>;
   created_at: string;
+};
+
+type ServiceAddress = {
+  id: string;
+  label: string;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  notes: string | null;
+};
+
+type Equipment = {
+  id: string;
+  name: string;
+  manufacturer: string | null;
+  model: string | null;
+  serial_number: string | null;
+  installed_at: string | null;
+  notes: string | null;
+};
+
+type CustomerDetail = Customer & {
+  lifetime_value_cents: number;
+  paid_invoice_count: number;
+  open_job_count: number;
+  open_estimate_count: number;
+  open_estimate_cents: number;
+  open_invoice_count: number;
+  open_invoice_cents: number;
+  service_addresses: ServiceAddress[];
+  equipment: Equipment[];
 };
 
 const statusStyles: Record<CustomerStatus, string> = {
@@ -148,6 +186,8 @@ function customerPayload(form: FormData) {
     name: form.get("name"),
     notes: form.get("notes") || null,
     phone: form.get("phone") || null,
+    preferred_contact: form.get("preferred_contact") || null,
+    sms_opt_in: form.get("sms_opt_in") === "on",
     source: form.get("source") || null,
     status: form.get("status"),
   };
@@ -178,9 +218,13 @@ export default function CustomersPage() {
   const [activityLogs, setActivityLogs] = useState<AuditLog[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [equipmentSaving, setEquipmentSaving] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -206,6 +250,14 @@ export default function CustomersPage() {
         .filter((log) => log.context.customer_id === selectedCustomer.id)
         .slice(0, 5)
     : [];
+
+  // Profile metrics prefer the backend CustomerDetail; fall back to the local
+  // list data while the detail is loading.
+  const lifetimeValueCents = customerDetail?.lifetime_value_cents ?? selectedPaidCents;
+  const paidInvoiceCount = customerDetail?.paid_invoice_count ?? 0;
+  const openJobCount = customerDetail?.open_job_count ?? selectedCustomerJobs.length;
+  const openEstimateCents = customerDetail?.open_estimate_cents ?? selectedOpenEstimateCents;
+  const openInvoiceCents = customerDetail?.open_invoice_cents ?? selectedUnpaidCents;
 
   async function loadCustomers() {
     setLoading(true);
@@ -250,9 +302,34 @@ export default function CustomersPage() {
     }
   }
 
+  async function loadDetail(customerId: string | null) {
+    if (!customerId) {
+      setCustomerDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, { cache: "no-store" });
+      const payload = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(payload, "Unable to load customer profile."));
+        return;
+      }
+      setCustomerDetail(payload as CustomerDetail);
+    } catch {
+      setError("CrewPilot OS could not load this customer profile.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadCustomers();
   }, []);
+
+  useEffect(() => {
+    void loadDetail(selectedId);
+  }, [selectedId]);
 
   const filteredCustomers = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -318,6 +395,115 @@ export default function CustomersPage() {
       setError("CrewPilot OS could not update this customer.");
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function addAddress(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCustomer) return;
+
+    setAddressSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const response = await fetch(`/api/customers/${selectedCustomer.id}/addresses`, {
+        body: JSON.stringify({
+          address_line1: form.get("address_line1"),
+          address_line2: form.get("address_line2") || null,
+          city: form.get("city"),
+          label: form.get("label") || "Home",
+          notes: form.get("notes") || null,
+          postal_code: form.get("postal_code"),
+          state: form.get("state"),
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, "Unable to save this address."));
+        return;
+      }
+      event.currentTarget.reset();
+      await loadDetail(selectedCustomer.id);
+    } catch {
+      setError("CrewPilot OS could not save this address.");
+    } finally {
+      setAddressSaving(false);
+    }
+  }
+
+  async function removeAddress(addressId: string) {
+    if (!selectedCustomer) return;
+
+    setError("");
+    try {
+      const response = await fetch(`/api/customers/${selectedCustomer.id}/addresses/${addressId}`, {
+        method: "DELETE",
+      });
+      if (response.status !== 204) {
+        const payload = await readApiResponse(response);
+        setError(errorMessage(payload, "Unable to remove this address."));
+        return;
+      }
+      await loadDetail(selectedCustomer.id);
+    } catch {
+      setError("CrewPilot OS could not remove this address.");
+    }
+  }
+
+  async function addEquipment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCustomer) return;
+
+    setEquipmentSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const response = await fetch(`/api/customers/${selectedCustomer.id}/equipment`, {
+        body: JSON.stringify({
+          installed_at: form.get("installed_at") || null,
+          manufacturer: form.get("manufacturer") || null,
+          model: form.get("model") || null,
+          name: form.get("name"),
+          notes: form.get("notes") || null,
+          serial_number: form.get("serial_number") || null,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, "Unable to save this equipment."));
+        return;
+      }
+      event.currentTarget.reset();
+      await loadDetail(selectedCustomer.id);
+    } catch {
+      setError("CrewPilot OS could not save this equipment.");
+    } finally {
+      setEquipmentSaving(false);
+    }
+  }
+
+  async function removeEquipment(equipmentId: string) {
+    if (!selectedCustomer) return;
+
+    setError("");
+    try {
+      const response = await fetch(`/api/customers/${selectedCustomer.id}/equipment/${equipmentId}`, {
+        method: "DELETE",
+      });
+      if (response.status !== 204) {
+        const payload = await readApiResponse(response);
+        setError(errorMessage(payload, "Unable to remove this equipment."));
+        return;
+      }
+      await loadDetail(selectedCustomer.id);
+    } catch {
+      setError("CrewPilot OS could not remove this equipment.");
     }
   }
 
@@ -431,6 +617,12 @@ export default function CustomersPage() {
                 <MapPin className="size-4 text-gray-400" />
                 {selectedCustomer.source ? `Source: ${selectedCustomer.source}` : "No lead source yet"}
               </p>
+              <p className="inline-flex items-center gap-2">
+                <Activity className="size-4 text-gray-400" />
+                {selectedCustomer.sms_opt_in
+                  ? `SMS reminders on · prefers ${selectedCustomer.preferred_contact || "no preference"}`
+                  : "SMS reminders off"}
+              </p>
             </div>
 
             <div className="mt-5 rounded-lg bg-gray-50 p-4">
@@ -441,49 +633,137 @@ export default function CustomersPage() {
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-lg border p-4">
                 <BriefcaseBusiness className="size-5 text-orange-600" />
-                <p className="mt-3 text-sm font-semibold">Jobs</p>
+                <p className="mt-3 text-sm font-semibold">Open jobs</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  {selectedCustomerJobs.length} linked job{selectedCustomerJobs.length === 1 ? "" : "s"} so far.
+                  {detailLoading ? "Loading…" : `${openJobCount} open job${openJobCount === 1 ? "" : "s"} right now.`}
                 </p>
               </div>
               <div className="rounded-lg border p-4">
                 <CircleDollarSign className="size-5 text-orange-600" />
                 <p className="mt-3 text-sm font-semibold">Customer value</p>
-                <p className="mt-1 text-xs text-gray-500">{formatMoney(selectedPaidCents)} paid · {formatMoney(selectedUnpaidCents)} unpaid.</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {detailLoading ? "Loading…" : `${formatMoney(lifetimeValueCents)} lifetime · ${paidInvoiceCount} paid invoice${paidInvoiceCount === 1 ? "" : "s"}.`}
+                </p>
               </div>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <MoneyStat label="Paid" value={formatMoney(selectedPaidCents)} />
-              <MoneyStat label="Unpaid" value={formatMoney(selectedUnpaidCents)} />
-              <MoneyStat label="Open estimates" value={formatMoney(selectedOpenEstimateCents)} />
+              <MoneyStat label="Lifetime value" value={detailLoading ? "—" : formatMoney(lifetimeValueCents)} />
+              <MoneyStat label="Open estimates" value={detailLoading ? "—" : formatMoney(openEstimateCents)} />
+              <MoneyStat label="Open invoices" value={detailLoading ? "—" : formatMoney(openInvoiceCents)} />
             </div>
 
+            {/* Service addresses */}
             <div className="mt-5 rounded-lg border p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                  <Activity className="size-4 text-orange-600" />
-                  Activity timeline
+                  <MapPin className="size-4 text-orange-600" />
+                  Service addresses
                 </p>
-                <span className="text-xs text-gray-400">Last 5</span>
+                <span className="text-xs text-gray-400">
+                  {detailLoading ? "…" : `${(customerDetail?.service_addresses ?? []).length} saved`}
+                </span>
               </div>
-              {selectedCustomerActivity.length === 0 ? (
-                <p className="mt-2 text-xs text-gray-500">No tracked workflow activity for this customer yet.</p>
+              {(customerDetail?.service_addresses ?? []).length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No service addresses on file yet.</p>
               ) : (
                 <div className="mt-3 space-y-3">
-                  {selectedCustomerActivity.map((log) => (
-                    <div key={log.id} className="rounded-lg bg-gray-50 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">{activityLabel(log.action)}</p>
-                        <span className="text-[11px] text-gray-400">
-                          {new Date(log.created_at).toLocaleDateString()}
-                        </span>
+                  {customerDetail!.service_addresses.map((address) => (
+                    <div key={address.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold capitalize">{address.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {address.address_line1}
+                            {address.address_line2 ? `, ${address.address_line2}` : ""}, {address.city},{" "}
+                            {address.state} {address.postal_code}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${address.label} address`}
+                          onClick={() => void removeAddress(address.id)}
+                          className="rounded-lg border bg-white p-1.5 text-gray-400 transition hover:text-rose-600"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                       </div>
-                      <p className="mt-1 text-xs capitalize text-gray-500">{activityDescription(log)}</p>
                     </div>
                   ))}
                 </div>
               )}
+              <form onSubmit={addAddress} className="mt-4 grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
+                  <input name="label" placeholder="Label (Home, Office…)" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="address_line1" required placeholder="Street address" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="address_line2" placeholder="Unit / suite (optional)" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <input name="city" required placeholder="City" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="state" required placeholder="ST" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="postal_code" required placeholder="Postal code" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <button disabled={addressSaving} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60">
+                    {addressSaving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    Add address
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Equipment */}
+            <div className="mt-5 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                  <Wrench className="size-4 text-orange-600" />
+                  Equipment
+                </p>
+                <span className="text-xs text-gray-400">
+                  {detailLoading ? "…" : `${(customerDetail?.equipment ?? []).length} units`}
+                </span>
+              </div>
+              {(customerDetail?.equipment ?? []).length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No equipment on file yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {customerDetail!.equipment.map((unit) => (
+                    <div key={unit.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">{unit.name}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {[unit.manufacturer, unit.model].filter(Boolean).join(" · ") || "No model on file"}
+                            {unit.serial_number ? ` · S/N ${unit.serial_number}` : ""}
+                            {unit.installed_at ? ` · installed ${new Date(unit.installed_at).toLocaleDateString()}` : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${unit.name}`}
+                          onClick={() => void removeEquipment(unit.id)}
+                          className="rounded-lg border bg-white p-1.5 text-gray-400 transition hover:text-rose-600"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <form onSubmit={addEquipment} className="mt-4 grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input name="name" required placeholder="Equipment name" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="manufacturer" placeholder="Manufacturer (optional)" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input name="model" placeholder="Model (optional)" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="serial_number" placeholder="Serial number (optional)" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  <input name="installed_at" type="date" className="h-10 rounded-lg border px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                </div>
+                <button disabled={equipmentSaving} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60">
+                  {equipmentSaving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                  Add equipment
+                </button>
+              </form>
             </div>
 
             <div className="mt-5 rounded-lg border p-4">
@@ -537,6 +817,33 @@ export default function CustomersPage() {
                       <p className="mt-1 text-xs text-gray-500">
                         {invoice.due_at ? `Due ${new Date(invoice.due_at).toLocaleDateString()}` : `Created ${new Date(invoice.created_at).toLocaleDateString()}`}
                       </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                  <Activity className="size-4 text-orange-600" />
+                  Activity timeline
+                </p>
+                <span className="text-xs text-gray-400">Last 5</span>
+              </div>
+              {selectedCustomerActivity.length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No tracked workflow activity for this customer yet.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {selectedCustomerActivity.map((log) => (
+                    <div key={log.id} className="rounded-lg bg-gray-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{activityLabel(log.action)}</p>
+                        <span className="text-[11px] text-gray-400">
+                          {new Date(log.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs capitalize text-gray-500">{activityDescription(log)}</p>
                     </div>
                   ))}
                 </div>
@@ -620,6 +927,24 @@ function CustomerFields({ customer }: { customer?: Customer }) {
         <label className="block text-sm font-medium">
           Source
           <input name="source" defaultValue={customer?.source ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Referral, Google, phone call" />
+        </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <label className="block text-sm font-medium">
+          Preferred contact
+          <select name="preferred_contact" defaultValue={customer?.preferred_contact ?? ""} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+            <option value="">No preference</option>
+            <option value="phone">Phone</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+          </select>
+        </label>
+        <label className="block text-sm font-medium">
+          SMS reminders
+          <span className="mt-2 flex h-10 items-center gap-2 rounded-lg border px-3 text-sm text-gray-600">
+            <input name="sms_opt_in" type="checkbox" defaultChecked={customer?.sms_opt_in ?? false} className="size-4 accent-orange-600" />
+            Allow SMS follow-up reminders
+          </span>
         </label>
       </div>
       <label className="block text-sm font-medium">
