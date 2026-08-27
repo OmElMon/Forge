@@ -26,6 +26,7 @@ const nav = [
   { label: "Overview", icon: Gauge, href: "/dashboard" },
   { label: "Customers", icon: ContactRound, href: "/dashboard/customers" },
   { label: "Jobs", icon: BriefcaseBusiness, href: "/dashboard/jobs" },
+  { label: "Follow-ups", icon: Bell, href: "/dashboard/followups" },
   { label: "Schedule", icon: CalendarDays, href: "/dashboard/schedule" },
   { label: "Technicians", icon: Wrench, href: "/dashboard/technicians" },
   { label: "Invoices", icon: CircleDollarSign, href: "/dashboard/invoices" },

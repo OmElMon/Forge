@@ -103,6 +103,7 @@ Frontend:
 - Technicians page with workload/availability signals.
 - Invoices page with estimate/invoice workflow.
 - Analytics page wired to the analytics summary API.
+- Follow-ups page: automation taskboard wired to the follow-up queue API — open/resolved filter, overdue/due-today signals, one-click resolve, and inline toggles for the policy registry (`/followups/rules`), so the automation layer is fully manageable from the dashboard.
 - Settings page with operational setup guidance.
 
 CI:
