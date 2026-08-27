@@ -215,6 +215,7 @@ async def _replace_demo_business_data(company: Company) -> None:
                 scheduled_start=now + timedelta(days=1, hours=2),
                 amount_cents=24900,
                 technician_name=None,
+                required_skills=["thermostats", "controls"],
                 notes="Customer wants Wi-Fi thermostat recommendation.",
             ),
         ]
