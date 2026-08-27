@@ -8,7 +8,7 @@ The goal is simple: build CrewPilot OS into a credible vertical SaaS operating s
 
 When Moe says to continue building, Codex should:
 
-1. Check the current repo state and recent docs.
+1. Read `docs/ai-handoff.md`, then check the current repo state and recent docs.
 2. Pick the next highest-leverage slice from the build queue.
 3. Prefer backend/API/platform work when Netlify credits are low or frontend auto-publishing is locked.
 4. Keep the slice small enough to complete, test, commit, push, and explain clearly.
@@ -35,7 +35,7 @@ When Moe says to “ramp the workflow,” “keep building,” or otherwise asks
 To reduce repeated planning/token use:
 
 - Do not restate the whole product vision unless asked.
-- Read `docs/workflows.md`, `docs/roadmap.md`, and `docs/stability.md` first when direction is unclear.
+- Read `docs/ai-handoff.md`, `docs/workflows.md`, `docs/roadmap.md`, and `docs/stability.md` first when direction is unclear.
 - Make reasonable product assumptions inside the current stage.
 - Prefer one complete slice over several half-finished branches.
 - Keep user updates short: what is being built, whether it touches Netlify, whether tests passed.
