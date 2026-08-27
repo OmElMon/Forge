@@ -86,7 +86,7 @@ Backend:
 - Workflow automation rules (first consumer of `/events`): an idempotent `automation_rules` service scans the tenant's event stream and materializes tenant-scoped follow-up tasks for estimate-sent, estimate-approved, and invoice-sent transitions. Estimate approval auto-resolves the earlier "awaiting follow-up" task. `GET /followups` materializes pending follow-ups before listing (works without a background worker); `POST /followups/{id}/resolve` closes them with an audit record and emits `followup.created`/`followup.resolved` stream events. Dedupe: partial unique index on `(company_id, unique_key)` for open tasks.
 - Attention queue API for follow-up gaps and revenue risk.
 - Analytics summary API for revenue, pipeline, conversion, job, and customer metrics.
-- Health/readiness/status endpoints.
+- Health/readiness/status endpoints: `/health` liveness includes app+version; `/ready` now gates on database reachability AND migration current == head (503 on drift); `/status` reports database latency, migration current/head, environment, process `started_at`, and a sanitized failure `detail`. The API migration head is resolved relative to the module, not the process cwd.
 
 Frontend:
 
@@ -112,9 +112,9 @@ Base API prefix: `/api/v1`.
 
 Public/system:
 
-- `GET /health` — simple process health.
-- `GET /ready` — database readiness.
-- `GET /status` — production status including app, environment, database check, migration current/head, and timestamp.
+- `GET /health` — simple process health including app identity and version.
+- `GET /ready` — database readiness + migration current/head in sync (503 "degraded" otherwise).
+- `GET /status` — production status: database latency/detail, migration current/head, environment, started_at, version.
 
 Auth:
 
@@ -180,12 +180,11 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 ## Current recommended build queue
 
-The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), and workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`). Remaining highest-value next slices:
+The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), and production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries). Remaining highest-value next slices:
 
 1. Workflow automation rules depth — scheduled/proactive delivery (Celery beat exists in docker-compose via `celery -A app.worker.celery`), more rule types (job completed → invoice nudge), message delivery (next step after integration boundaries).
-2. Production observability polish — more actionable smoke checks and operational docs.
-3. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
-4. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
+2. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
+3. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 

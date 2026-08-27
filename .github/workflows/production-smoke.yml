@@ -12,10 +12,10 @@ on:
         required: true
         default: https://crewpilotos.onrender.com
       check_readiness:
-        description: Also require /api/v1/ready to pass
+        description: Also require /api/v1/ready to pass (includes migration drift check)
         required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -23,25 +23,50 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check frontend
         run: |
-          curl --fail --silent --show-error --location "${{ inputs.frontend_url }}" > /tmp/frontend.html
+          curl --fail --silent --show-error --location --retry 5 \
+            --retry-all-errors --retry-connrefused --retry-delay 5 --max-time 30 \
+            "${{ inputs.frontend_url }}" > /tmp/frontend.html
           grep -qi "CrewPilot OS" /tmp/frontend.html
 
       - name: Check API root
         run: |
-          curl --fail --silent --show-error "${{ inputs.api_url }}/" | grep -qi "CrewPilot OS API"
+          curl --fail --silent --show-error --retry 5 \
+            --retry-all-errors --retry-connrefused --retry-delay 5 --max-time 30 \
+            "${{ inputs.api_url }}/" | grep -qi "CrewPilot OS API"
 
       - name: Check API health
         run: |
-          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/health" | grep -q '"ok"'
+          curl --fail --silent --show-error --retry 5 \
+            --retry-all-errors --retry-connrefused --retry-delay 5 --max-time 30 \
+            "${{ inputs.api_url }}/api/v1/health" | grep -q '"ok"'
 
-      - name: Check API status
+      - name: Check API status is consistent
         run: |
-          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/status" | grep -q '"status":"ok"'
+          python3 - <<'EOF'
+          import json
+          import urllib.request
+
+          url = "${{ inputs.api_url }}/api/v1/status"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              data = json.load(response)
+
+          assert data["status"] == "ok", data
+          assert data["checks"]["database"]["status"] == "ok", data
+          assert data["checks"]["migrations"]["status"] == "ok", data
+          assert (
+              data["checks"]["migrations"]["current"]
+              == data["checks"]["migrations"]["head"]
+          ), data
+          print("API status OK:", json.dumps(data))
+          EOF
 
       - name: Check API readiness
         if: ${{ inputs.check_readiness }}
         run: |
-          curl --fail --silent --show-error "${{ inputs.api_url }}/api/v1/ready" | grep -q '"ready"'
+          curl --fail --silent --show-error --retry 5 \
+            --retry-all-errors --retry-connrefused --retry-delay 5 --max-time 30 \
+            "${{ inputs.api_url }}/api/v1/ready" | grep -q '"ready"'
