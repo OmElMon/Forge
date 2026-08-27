@@ -4,6 +4,7 @@ from uuid import uuid4
 from pytest import MonkeyPatch
 
 from app.integrations.messaging import RecordingMessagingProvider
+from app.models.automation_policy import AutomationPolicy
 from app.models.customer import Customer
 from app.models.domain_event import DomainEvent
 from app.models.enums import (
@@ -18,6 +19,7 @@ from app.models.followup_task import FollowupTask
 from app.schemas.principal import Principal
 from app.services import automation_rules
 from app.services.automation_rules import (
+    AUTOMATION_POLICIES,
     ESTIMATE_APPROVED_RULE,
     ESTIMATE_SENT_RULE,
     INVOICE_SENT_RULE,
@@ -29,6 +31,7 @@ from app.services.automation_rules import (
     followup_unique_key,
     materialize_pending_followups,
     resolve_followup,
+    rule_by_type,
     rule_spec_for_event,
     run_followup_automation,
 )
@@ -506,3 +509,281 @@ async def test_resolve_followup_marks_completed_and_is_idempotent() -> None:
 
     await resolve_followup(session, make_principal(), followup, user_id=USER_ID, now=NOW)
     assert len(added_events(session)) == 1  # idempotent: no duplicate event
+
+
+def test_policy_registry_lists_declared_rules() -> None:
+    rule_types = {rule.rule_type for rule in AUTOMATION_POLICIES}
+    assert rule_types == {
+        "estimate.sent",
+        "estimate.approved",
+        "invoice.sent",
+        "invoice.create",
+    }
+
+
+def test_rule_by_type_finds_and_misses_rules() -> None:
+    assert rule_by_type(RULE_INVOICE_CREATE) == JOB_INVOICE_RULE
+    assert rule_by_type("no.such.rule") is None
+
+
+async def test_invoice_sent_for_job_resolves_open_invoice_creation_followup() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    invoice_id = uuid4()
+    job_invoice_task = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=customer_id,
+        job_id=job_id,
+        rule_type=RULE_INVOICE_CREATE,
+        title="Job completed — create and send invoice",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_INVOICE_CREATE, job_id),
+        due_at=NOW + timedelta(days=2),
+    )
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.INVOICE_SENT,
+                aggregate_id=invoice_id,
+                payload={
+                    "customer_id": str(customer_id),
+                    "document_type": InvoiceType.INVOICE.value,
+                    "job_id": str(job_id),
+                    "title": "Furnace replacement invoice",
+                },
+            )
+        ],
+        open_followups=[job_invoice_task],
+    )
+
+    created = await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    # The completed job's invoice-creation task closes itself.
+    assert job_invoice_task.status == FollowupTaskStatus.RESOLVED
+    assert job_invoice_task.resolved_at == NOW
+    assert job_invoice_task.resolved_by_user_id is None
+
+    # The invoice.sent transition still opens a payment follow-up.
+    assert len(created) == 1
+    assert created[0].rule_type == "invoice.sent"
+    assert created[0].invoice_id == invoice_id
+
+    resolved_events = [
+        event
+        for event in added_events(session)
+        if event.event_type == DomainEventType.FOLLOWUP_RESOLVED.value
+    ]
+    assert len(resolved_events) == 1
+    assert resolved_events[0].payload["reason"] == "invoice.sent"
+    assert resolved_events[0].payload["job_id"] == str(job_id)
+    assert resolved_events[0].payload["rule_type"] == RULE_INVOICE_CREATE
+    assert resolved_events[0].source == "automation"
+
+
+async def test_invoice_sent_without_job_link_is_noop_for_job_resolution() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    invoice_id = uuid4()
+    job_invoice_task = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=customer_id,
+        job_id=job_id,
+        rule_type=RULE_INVOICE_CREATE,
+        title="Job completed — create and send invoice",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_INVOICE_CREATE, job_id),
+        due_at=NOW + timedelta(days=2),
+    )
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.INVOICE_SENT,
+                aggregate_id=invoice_id,
+                payload={
+                    "customer_id": str(customer_id),
+                    "document_type": InvoiceType.INVOICE.value,
+                    "title": "Unlinked job invoice",
+                },
+            )
+        ],
+        open_followups=[job_invoice_task],
+    )
+
+    await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    assert job_invoice_task.status == FollowupTaskStatus.OPEN
+    resolved_events = [
+        event
+        for event in added_events(session)
+        if event.event_type == DomainEventType.FOLLOWUP_RESOLVED.value
+    ]
+    assert resolved_events == []
+
+
+async def test_invoice_sent_for_other_job_does_not_resolve() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    invoice_id = uuid4()
+    job_invoice_task = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=customer_id,
+        job_id=job_id,
+        rule_type=RULE_INVOICE_CREATE,
+        title="Job completed — create and send invoice",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_INVOICE_CREATE, job_id),
+        due_at=NOW + timedelta(days=2),
+    )
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.INVOICE_SENT,
+                aggregate_id=invoice_id,
+                payload={
+                    "customer_id": str(customer_id),
+                    "document_type": InvoiceType.INVOICE.value,
+                    "job_id": str(uuid4()),
+                    "title": "Receipt invoice",
+                },
+            )
+        ],
+        open_followups=[job_invoice_task],
+    )
+
+    await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    assert job_invoice_task.status == FollowupTaskStatus.OPEN
+
+
+async def test_sent_estimate_does_not_resolve_job_invoice_followup() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    invoice_id = uuid4()
+    job_invoice_task = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=customer_id,
+        job_id=job_id,
+        rule_type=RULE_INVOICE_CREATE,
+        title="Job completed — create and send invoice",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_INVOICE_CREATE, job_id),
+        due_at=NOW + timedelta(days=2),
+    )
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.INVOICE_SENT,
+                aggregate_id=invoice_id,
+                payload={
+                    "customer_id": str(customer_id),
+                    "document_type": InvoiceType.ESTIMATE.value,
+                    "job_id": str(job_id),
+                    "title": "AC tune-up (Estimate)",
+                },
+            )
+        ],
+        open_followups=[job_invoice_task],
+    )
+
+    await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    assert job_invoice_task.status == FollowupTaskStatus.OPEN
+    created = added_followups(session)
+    assert [task for task in created if task.rule_type == RULE_INVOICE_CREATE] == []
+
+
+async def test_job_invoice_resolution_is_idempotent_across_scans() -> None:
+    customer_id = uuid4()
+    job_id = uuid4()
+    invoice_id = uuid4()
+    job_invoice_task = FollowupTask(
+        company_id=COMPANY_ID,
+        customer_id=customer_id,
+        job_id=job_id,
+        rule_type=RULE_INVOICE_CREATE,
+        title="Job completed — create and send invoice",
+        status=FollowupTaskStatus.OPEN,
+        unique_key=followup_unique_key(RULE_INVOICE_CREATE, job_id),
+        due_at=NOW + timedelta(days=2),
+    )
+    event = make_event(
+        DomainEventType.INVOICE_SENT,
+        aggregate_id=invoice_id,
+        payload={
+            "customer_id": str(customer_id),
+            "document_type": InvoiceType.INVOICE.value,
+            "job_id": str(job_id),
+            "title": "Furnace replacement invoice",
+        },
+    )
+    session = FakeSession(events=[event], open_followups=[job_invoice_task])
+
+    await materialize_pending_followups(session, make_principal(), now=NOW)
+    await materialize_pending_followups(session, make_principal(), now=NOW)
+
+    resolved_events = [
+        event
+        for event in added_events(session)
+        if event.event_type == DomainEventType.FOLLOWUP_RESOLVED.value
+    ]
+    assert len(resolved_events) == 1
+
+
+async def test_disabled_policy_skips_materialization() -> None:
+    customer_id = uuid4()
+    session = FakeSession(
+        events=[
+            make_event(
+                DomainEventType.JOB_COMPLETED,
+                aggregate_id=uuid4(),
+                aggregate_type=DomainAggregateType.JOB,
+                payload={"customer_id": str(customer_id), "title": "Water heater swap"},
+            )
+        ]
+    )
+
+    created = await materialize_pending_followups(
+        session,
+        make_principal(),
+        now=NOW,
+        policy_enabled={RULE_ESTIMATE_SENT},
+    )
+
+    assert created == []
+    assert added_followups(session) == []
+
+
+class PolicyRecallSession(FakeSession):
+    def __init__(self, policies: list[AutomationPolicy], **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.policies = list(policies)
+
+    async def execute(self, statement):
+        if "automation_policies" in str(statement):
+            return ScalarRows(self.policies)
+        return await super().execute(statement)
+
+
+async def test_run_automation_skips_disabled_policy() -> None:
+    customer_id = uuid4()
+    session = PolicyRecallSession(
+        policies=[
+            AutomationPolicy(
+                company_id=COMPANY_ID,
+                rule_type=RULE_INVOICE_CREATE,
+                enabled=False,
+            )
+        ],
+        events=[
+            make_event(
+                DomainEventType.JOB_COMPLETED,
+                aggregate_id=uuid4(),
+                aggregate_type=DomainAggregateType.JOB,
+                payload={"customer_id": str(customer_id), "title": "Water heater swap"},
+            )
+        ],
+    )
+
+    await run_followup_automation(session, make_principal(), now=NOW)
+
+    assert added_followups(session) == []

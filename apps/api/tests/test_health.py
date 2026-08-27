@@ -16,7 +16,7 @@ def test_health_reports_identity_and_version() -> None:
 
 
 def test_migration_head_matches_latest_revision() -> None:
-    assert migration_head() == "20260827_0014"
+    assert migration_head() == "20260827_0015"
 
 
 class FakeRevisionResult:
@@ -41,15 +41,15 @@ class FakeSession:
 
 
 async def healthy_db_override():
-    yield FakeSession("20260827_0014")
+    yield FakeSession("20260827_0015")
 
 
 async def stale_db_override():
-    yield FakeSession("20260827_0013")
+    yield FakeSession("20260827_0014")
 
 
 async def failing_db_override():
-    session = FakeSession("20260827_0014")
+    session = FakeSession("20260827_0015")
     session.failing = True
     yield session
 
@@ -76,8 +76,8 @@ def test_status_reports_database_and_migration_health() -> None:
     assert payload["app"] == "CrewPilot OS API"
     assert payload["checks"]["database"]["status"] == "ok"
     assert isinstance(payload["checks"]["database"]["latency_ms"], float)
-    assert payload["checks"]["migrations"]["current"] == "20260827_0014"
-    assert payload["checks"]["migrations"]["head"] == "20260827_0014"
+    assert payload["checks"]["migrations"]["current"] == "20260827_0015"
+    assert payload["checks"]["migrations"]["head"] == "20260827_0015"
     assert payload["checks"]["migrations"]["status"] == "ok"
     assert "environment" in payload
     assert "started_at" in payload

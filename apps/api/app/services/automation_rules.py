@@ -16,6 +16,7 @@ from app.models.enums import (
 )
 from app.models.followup_task import FollowupTask
 from app.schemas.principal import Principal
+from app.services.automation_policies import enabled_policy_types
 from app.services.events import emit_domain_event
 from app.services.integrations import (
     MessageChannel,
@@ -41,28 +42,45 @@ class FollowupRule:
     rule_type: str
     title: str
     due_days: int
+    description: str = ""
 
 
 ESTIMATE_SENT_RULE = FollowupRule(
     rule_type=RULE_ESTIMATE_SENT,
     title="Estimate awaiting follow-up",
     due_days=ESTIMATE_FOLLOWUP_DUE_DAYS,
+    description="Follow up with a customer after an estimate is sent.",
 )
 ESTIMATE_APPROVED_RULE = FollowupRule(
     rule_type=RULE_ESTIMATE_APPROVED,
     title="Estimate ready to convert",
     due_days=ESTIMATE_CONVERT_DUE_DAYS,
+    description="Convert a customer-approved estimate into a billable invoice.",
 )
 INVOICE_SENT_RULE = FollowupRule(
     rule_type=RULE_INVOICE_SENT,
     title="Invoice awaiting payment",
     due_days=INVOICE_PAYMENT_FOLLOWUP_DAYS,
+    description="Chase payment on an invoice that has been sent.",
 )
 JOB_INVOICE_RULE = FollowupRule(
     rule_type=RULE_INVOICE_CREATE,
     title="Job completed — create and send invoice",
     due_days=JOB_INVOICE_FOLLOWUP_DAYS,
+    description="Create and send the invoice for a completed job.",
 )
+
+AUTOMATION_POLICIES: tuple[FollowupRule, ...] = (
+    ESTIMATE_SENT_RULE,
+    ESTIMATE_APPROVED_RULE,
+    INVOICE_SENT_RULE,
+    JOB_INVOICE_RULE,
+)
+
+
+def rule_by_type(rule_type: str) -> FollowupRule | None:
+    return next((rule for rule in AUTOMATION_POLICIES if rule.rule_type == rule_type), None)
+
 
 ROUTED_EVENT_TYPES = {
     DomainEventType.INVOICE_SENT.value,
@@ -105,13 +123,17 @@ async def materialize_pending_followups(
     principal: Principal,
     *,
     now: datetime | None = None,
+    policy_enabled: set[str] | None = None,
 ) -> list[FollowupTask]:
     """Turn operational domain events into follow-up tasks (idempotent).
 
     Scans the tenant's recent event stream for routed event types and creates an
     open follow-up for each new ``(rule, aggregate)`` pair. Approval of an
-    estimate also resolves its earlier "awaiting follow-up" task. Because the
-    partial unique index rejects duplicate open tasks, repeated scans are safe.
+    estimate resolves its earlier "awaiting follow-up" task, and sending an
+    invoice auto-resolves a completed job's "create and send invoice" task.
+    Because the partial unique index rejects duplicate open tasks, repeated
+    scans are safe. Passing ``policy_enabled`` (the company's enabled rule
+    types) skips materialization for disabled policies.
     """
     current_time = now or datetime.now(UTC)
     window_start = current_time - timedelta(days=LOOKBACK_DAYS)
@@ -149,6 +171,21 @@ async def materialize_pending_followups(
             await _resolve_estimate_sent_followups(
                 db, principal, event.aggregate_id, now=current_time
             )
+
+        if (
+            event.event_type == DomainEventType.INVOICE_SENT.value
+            and event.payload.get("document_type") == InvoiceType.INVOICE.value
+        ):
+            await _resolve_job_invoice_followups(
+                db,
+                principal,
+                _coerce_uuid(event.payload.get("job_id")),
+                now=current_time,
+                open_by_key=open_by_key,
+            )
+
+        if policy_enabled is not None and rule.rule_type not in policy_enabled:
+            continue
 
         if key in open_by_key:
             continue
@@ -234,6 +271,48 @@ async def _resolve_estimate_sent_followups(
             payload={
                 "followup_id": task.id,
                 "reason": "estimate.approved",
+                "rule_type": task.rule_type,
+            },
+            source="automation",
+        )
+
+
+async def _resolve_job_invoice_followups(
+    db: AsyncSession,
+    principal: Principal,
+    job_id: UUID | None,
+    *,
+    now: datetime,
+    open_by_key: dict[str, FollowupTask],
+) -> None:
+    """Auto-resolve a completed job's "create and send invoice" follow-up.
+
+    Runs from the in-memory open-task map so it closes both tasks that were
+    committed in an earlier pass and tasks materialized earlier in this same
+    scan. The follow-up is satisfied once the invoice for the job is sent.
+    """
+    if job_id is None:
+        return
+    for task in list(open_by_key.values()):
+        if task.status != FollowupTaskStatus.OPEN:
+            continue
+        if task.rule_type != RULE_INVOICE_CREATE:
+            continue
+        if task.job_id != job_id:
+            continue
+        task.status = FollowupTaskStatus.RESOLVED
+        task.resolved_at = now
+        task.resolved_by_user_id = None
+        emit_domain_event(
+            db,
+            principal,
+            aggregate_id=task.id,
+            aggregate_type=DomainAggregateType.FOLLOWUP,
+            event_type=DomainEventType.FOLLOWUP_RESOLVED,
+            payload={
+                "followup_id": task.id,
+                "job_id": job_id,
+                "reason": "invoice.sent",
                 "rule_type": task.rule_type,
             },
             source="automation",
@@ -364,7 +443,17 @@ async def run_followup_automation(
     the pass.
     """
     current_time = now or datetime.now(UTC)
-    await materialize_pending_followups(db, principal, now=current_time)
+    policy_enabled = await enabled_policy_types(
+        db,
+        principal,
+        [rule.rule_type for rule in AUTOMATION_POLICIES],
+    )
+    await materialize_pending_followups(
+        db,
+        principal,
+        now=current_time,
+        policy_enabled=policy_enabled,
+    )
     delivered = await deliver_due_followups(db, principal, now=current_time)
     await send_due_followup_messages(db, principal, delivered)
     return delivered

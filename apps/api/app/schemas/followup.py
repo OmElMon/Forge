@@ -6,6 +6,18 @@ from pydantic import BaseModel
 from app.models.enums import FollowupTaskStatus
 
 
+class FollowupPolicyRead(BaseModel):
+    rule_type: str
+    title: str
+    due_days: int
+    description: str
+    enabled: bool
+
+
+class FollowupPolicyUpdate(BaseModel):
+    enabled: bool
+
+
 class FollowupTaskRead(BaseModel):
     id: UUID
     company_id: UUID

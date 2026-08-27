@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,12 +8,34 @@ from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.enums import FollowupTaskStatus
 from app.models.followup_task import FollowupTask
-from app.schemas.followup import FollowupTaskRead
+from app.schemas.followup import FollowupPolicyRead, FollowupPolicyUpdate, FollowupTaskRead
 from app.schemas.principal import Principal
 from app.services.audit import record_audit_event
-from app.services.automation_rules import resolve_followup, run_followup_automation
+from app.services.automation_policies import load_policy_overrides, set_policy_enabled
+from app.services.automation_rules import (
+    AUTOMATION_POLICIES,
+    resolve_followup,
+    rule_by_type,
+    run_followup_automation,
+)
 
 router = APIRouter(prefix="/followups", tags=["followups"])
+
+
+def _policy_payload(rule_type: str, enabled: bool) -> FollowupPolicyRead:
+    rule = rule_by_type(rule_type)
+    if rule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No automation policy named '{rule_type}'.",
+        )
+    return FollowupPolicyRead(
+        rule_type=rule.rule_type,
+        title=rule.title,
+        due_days=rule.due_days,
+        description=rule.description,
+        enabled=enabled,
+    )
 
 
 @router.get("", response_model=list[FollowupTaskRead])
@@ -36,6 +58,49 @@ async def list_followups(
         .order_by(FollowupTask.due_at.asc().nullslast(), FollowupTask.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+@router.get("/rules", response_model=list[FollowupPolicyRead])
+async def list_followup_policies(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> list[FollowupPolicyRead]:
+    overrides = await load_policy_overrides(db, principal)
+    return [
+        FollowupPolicyRead(
+            rule_type=rule.rule_type,
+            title=rule.title,
+            due_days=rule.due_days,
+            description=rule.description,
+            enabled=overrides.get(rule.rule_type, True),
+        )
+        for rule in AUTOMATION_POLICIES
+    ]
+
+
+@router.patch("/rules/{rule_type}", response_model=FollowupPolicyRead)
+async def update_followup_policy(
+    rule_type: str,
+    payload: FollowupPolicyUpdate = Body(...),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> FollowupPolicyRead:
+    if rule_by_type(rule_type) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No automation policy named '{rule_type}'.",
+        )
+    enabled = await set_policy_enabled(db, principal, rule_type, payload.enabled)
+    record_audit_event(
+        db,
+        principal,
+        action="followup.policy_updated",
+        context={"rule_type": rule_type, "enabled": enabled},
+        resource_id=None,
+        resource_type="automation_policy",
+    )
+    await db.commit()
+    return _policy_payload(rule_type, enabled)
 
 
 @router.post("/{followup_id}/resolve", response_model=FollowupTaskRead)
