@@ -59,6 +59,18 @@ class FollowupTaskStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class IntakeRecordKind(StrEnum):
+    LEAD = "lead"
+    CALL = "call"
+
+
+class IntakeRecordStatus(StrEnum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    CLOSED = "closed"
+    CONVERTED = "converted"
+
+
 class DomainEventType(StrEnum):
     CUSTOMER_CREATED = "customer.created"
     CUSTOMER_UPDATED = "customer.updated"
@@ -91,6 +103,9 @@ class DomainEventType(StrEnum):
     FOLLOWUP_CREATED = "followup.created"
     FOLLOWUP_DUE = "followup.due"
     FOLLOWUP_RESOLVED = "followup.resolved"
+    INTAKE_RECORD_CREATED = "intake.record.created"
+    INTAKE_RECORD_UPDATED = "intake.record.updated"
+    INTAKE_RECORD_CONVERTED = "intake.record.converted"
 
 
 class DomainAggregateType(StrEnum):
@@ -99,3 +114,4 @@ class DomainAggregateType(StrEnum):
     JOB = "job"
     INVOICE = "invoice"
     FOLLOWUP = "followup"
+    INTAKE = "intake"

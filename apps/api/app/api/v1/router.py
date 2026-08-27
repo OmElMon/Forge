@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     events,
     followups,
     health,
+    intake,
     invoices,
     jobs,
     technicians,
@@ -28,3 +29,4 @@ api_router.include_router(audit_logs.router)
 api_router.include_router(events.router)
 api_router.include_router(followups.router)
 api_router.include_router(dispatch.router)
+api_router.include_router(intake.router)
