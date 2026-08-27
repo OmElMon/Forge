@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Bell,
+  BellRing,
   BriefcaseBusiness,
   CalendarDays,
   ChevronDown,
@@ -31,6 +32,7 @@ const nav = [
   { label: "Technicians", icon: Wrench, href: "/dashboard/technicians" },
   { label: "Invoices", icon: CircleDollarSign, href: "/dashboard/invoices" },
   { label: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
+  { label: "Activity", icon: BellRing, href: "/dashboard/activity" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
