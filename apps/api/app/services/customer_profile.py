@@ -1,5 +1,7 @@
+from collections.abc import Sequence
+
 from app.models.customer import Customer
-from app.models.enums import InvoiceStatus, InvoiceType, JobStatus
+from app.models.enums import CustomerStatus, InvoiceStatus, InvoiceType, JobStatus
 from app.models.equipment import Equipment
 from app.models.invoice import Invoice
 from app.models.job import Job
@@ -11,6 +13,33 @@ from app.schemas.service_address import ServiceAddressRead
 OPEN_JOB_STATUSES = {JobStatus.NEW, JobStatus.SCHEDULED, JobStatus.IN_PROGRESS}
 OPEN_ESTIMATE_STATUSES = {InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED}
 OPEN_INVOICE_STATUSES = {InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED}
+
+
+def filter_customers(
+    customers: Sequence[Customer],
+    *,
+    search: str | None = None,
+    status: CustomerStatus | None = None,
+) -> list[Customer]:
+    """Filter a tenant's customers by free-text search and/or status.
+
+    Search matches case-insensitively against name, phone, and email. Kept as a
+    pure in-memory filter so tenant-scale lists stay unit-testable and share a
+    single source of truth with the endpoint.
+    """
+    needle = search.strip().lower() if search else None
+    matches: list[Customer] = []
+    for customer in customers:
+        if status is not None and customer.status != status:
+            continue
+        if needle is not None:
+            haystack = " ".join(
+                part for part in (customer.name, customer.phone, customer.email) if part
+            ).lower()
+            if needle not in haystack:
+                continue
+        matches.append(customer)
+    return matches
 
 
 def build_customer_detail(

@@ -1,13 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
-from app.models.enums import DomainAggregateType, DomainEventType
+from app.models.enums import CustomerStatus, DomainAggregateType, DomainEventType
 from app.models.equipment import Equipment
 from app.models.invoice import Invoice
 from app.models.job import Job
@@ -26,7 +26,7 @@ from app.schemas.service_address import (
     ServiceAddressUpdate,
 )
 from app.services.audit import record_audit_event
-from app.services.customer_profile import build_customer_detail
+from app.services.customer_profile import build_customer_detail, filter_customers
 from app.services.events import emit_domain_event
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -100,6 +100,8 @@ async def get_company_equipment(
 
 @router.get("", response_model=list[CustomerRead])
 async def list_customers(
+    search: str | None = Query(default=None, max_length=160),
+    status: CustomerStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> list[Customer]:
@@ -108,7 +110,11 @@ async def list_customers(
         .where(Customer.company_id == principal.company_id)
         .order_by(Customer.created_at.desc())
     )
-    return list(result.scalars().all())
+    return filter_customers(
+        list(result.scalars().all()),  # type: ignore[arg-type]
+        search=search,
+        status=status,
+    )
 
 
 @router.post("", response_model=CustomerRead, status_code=status.HTTP_201_CREATED)
