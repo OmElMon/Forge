@@ -20,6 +20,12 @@ class CustomerStatus(StrEnum):
     INACTIVE = "inactive"
 
 
+class PreferredContact(StrEnum):
+    PHONE = "phone"
+    EMAIL = "email"
+    SMS = "sms"
+
+
 class JobStatus(StrEnum):
     NEW = "new"
     SCHEDULED = "scheduled"
@@ -51,6 +57,13 @@ class TechnicianStatus(StrEnum):
 class DomainEventType(StrEnum):
     CUSTOMER_CREATED = "customer.created"
     CUSTOMER_UPDATED = "customer.updated"
+    CUSTOMER_STAGE_CHANGED = "customer.stage.changed"
+    CUSTOMER_ADDRESS_ADDED = "customer.address.added"
+    CUSTOMER_ADDRESS_UPDATED = "customer.address.updated"
+    CUSTOMER_ADDRESS_REMOVED = "customer.address.removed"
+    CUSTOMER_EQUIPMENT_ADDED = "customer.equipment.added"
+    CUSTOMER_EQUIPMENT_UPDATED = "customer.equipment.updated"
+    CUSTOMER_EQUIPMENT_REMOVED = "customer.equipment.removed"
     TECHNICIAN_CREATED = "technician.created"
     TECHNICIAN_UPDATED = "technician.updated"
     TECHNICIAN_AVAILABILITY_CHANGED = "technician.availability.changed"

@@ -77,11 +77,12 @@ Backend:
 - Workspace registration and login.
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
-- Alembic migrations through `20260812_0009`.
+- Alembic migrations through `20260827_0011`.
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
 - Invoice workflows: send, approve, convert estimate to invoice, mark paid, void/reopen style transitions.
 - Typed, tenant-scoped domain event stream (`/events`) emitted alongside audits for intake, follow-up, dispatch, estimate, invoice, and customer-touch lifecycles. Append-only, JSON payloads, correlation IDs link multi-step transitions (e.g. estimate convert → invoice).
+- Customer profile depth: contact preferences (`preferred_contact`, `sms_opt_in`), service addresses, and equipment records on customers. `GET /customers/{id}` returns a `CustomerDetail` payload with lifetime value, paid invoice count, open work counts, open estimate/open invoice pipeline totals, plus the customer's addresses and equipment. Address and equipment CRUD under `/customers/{id}/addresses` and `/customers/{id}/equipment` are tenant-scoped and emit `customer.*` events + audit records.
 - Attention queue API for follow-up gaps and revenue risk.
 - Analytics summary API for revenue, pipeline, conversion, job, and customer metrics.
 - Health/readiness/status endpoints.
@@ -124,7 +125,7 @@ Auth:
 
 Core resources:
 
-- `/customers`
+- `/customers` — `GET /customers/{id}` returns `CustomerDetail` (LTV, open work, pipeline, addresses, equipment); nested `/{id}/addresses` and `/{id}/equipment` CRUD
 - `/jobs`
 - `/technicians`
 - `/invoices`
@@ -177,13 +178,12 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 ## Current recommended build queue
 
-The AI-ready event model is now in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream). Remaining highest-value next slices:
+The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream) and customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`). Remaining highest-value next slices:
 
-1. Customer profile depth — service addresses, equipment notes, contact preferences, lifetime value, open work.
-2. Workflow automation rules — reminders and follow-up tasks generated from operational events (the first consumer of the event stream).
-3. Production observability polish — more actionable smoke checks and operational docs.
-4. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
-5. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
+1. Workflow automation rules — reminders and follow-up tasks generated from operational events (the first consumer of the event stream).
+2. Production observability polish — more actionable smoke checks and operational docs.
+3. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
+4. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 

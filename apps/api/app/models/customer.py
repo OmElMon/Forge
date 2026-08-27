@@ -1,11 +1,11 @@
 from uuid import UUID
 
-from sqlalchemy import Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import CustomerStatus
+from app.models.enums import CustomerStatus, PreferredContact
 
 
 class Customer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -30,4 +30,13 @@ class Customer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     source: Mapped[str | None] = mapped_column(String(80))
+    preferred_contact: Mapped[PreferredContact | None] = mapped_column(
+        Enum(
+            PreferredContact,
+            name="customer_preferred_contact",
+            values_callable=lambda items: [item.value for item in items],
+        ),
+        nullable=True,
+    )
+    sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
