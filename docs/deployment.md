@@ -64,4 +64,28 @@ alembic upgrade head
 
 The API Docker image runs migrations automatically on container startup before launching Uvicorn.
 
+## Render blueprint
+
+The repo ships `render.yaml`, a Render Blueprint that declares three services against a managed Redis and the Supabase Postgres:
+
+- `crewpilot-api` — the web service (Docker, migrations on boot).
+- `crewpilot-worker` — the Celery worker (`automation.followup_sweep` et al.).
+- `crewpilot-beat` — the Celery beat scheduler.
+- `crewpilot-redis` — a Render-managed Redis instance.
+
+`DATABASE_URL` and `SECRET_KEY` are `sync: false`, so you must set them in the service environment after the blueprint provisions services (Supabase pooler URL with the `postgresql+asyncpg://` driver; a `SECRET_KEY` of at least 32 random characters). Adjust `CORS_ORIGINS` to the live Netlify domain. The web service `docker-entrypoint.sh` runs `alembic upgrade head` on every boot, so the blueprint needs no explicit migration job.
+
+## Backups
+
+Logical backups are handled by `apps/api/scripts/backup_db.sh`. It reads `DATABASE_URL`, strips the async driver suffix, and pipes `pg_dump` into a timestamped `*.sql.gz` archive under `BACKUP_DIR` (default `./backups`), pruning archives older than `BACKUP_RETENTION` days (default 14). It verifies each archive is valid gzip. Supabase provides native point-in-time backups; this script is a complementary off-platform logical copy and works both against the local docker-compose Postgres and Supabase.
+
+Run it inside the API container (it ships `pg_dump` via the base image) or locally with a `pg_dump` on `PATH`:
+
+```bash
+make db-backup            # inside docker compose
+DATABASE_URL="postgresql://..." BACKUP_DIR=/var/backups ./apps/api/scripts/backup_db.sh
+```
+
+Schedule it off-platform (e.g. a cron/CI job) rather than inside the short-lived API container:
+
 Once the backend URL is live, set Netlify's `API_INTERNAL_URL`, redeploy the frontend, and login/register will point at the production API.

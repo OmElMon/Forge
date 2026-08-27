@@ -1,0 +1,84 @@
+# Render Blueprint for CrewPilot OS (API + worker + beat).
+#
+# Assumptions:
+#   - PostgreSQL is hosted on Supabase; DATABASE_URL is the encoded pooler URL.
+#   - Redis is a Render-managed Redis instance referenced by REDIS_URL.
+#   - The Netlify frontend stays out of this blueprint.
+#
+# Apply by connecting this repo to Render (Blueprint). The api service runs
+# migrations on boot (see apps/api/docker-entrypoint.sh).
+services:
+  - type: web
+    name: crewpilot-api
+    runtime: docker
+    repo: https://github.com/OmElMon/Forge
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        sync: false # Supabase pooler URL, encoded, postgresql+asyncpg://
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: crewpilot-redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false # >= 32 random characters
+      - key: CORS_ORIGINS
+        value: '["https://crewpilotos.netlify.app"]'
+      - key: MESSAGING_PROVIDER
+        value: disabled
+      - key: VOICE_PROVIDER
+        value: disabled
+      - key: PAYMENTS_PROVIDER
+        value: disabled
+      - key: ACCOUNTING_PROVIDER
+        value: disabled
+      - key: RATE_LIMITING_ENABLED
+        value: "true"
+
+  - type: worker
+    name: crewpilot-worker
+    runtime: docker
+    repo: https://github.com/OmElMon/Forge
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: crewpilot-redis
+          property: connectionString
+    command: celery -A app.worker.celery worker --loglevel=INFO
+
+  - type: worker
+    name: crewpilot-beat
+    runtime: docker
+    repo: https://github.com/OmElMon/Forge
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: crewpilot-redis
+          property: connectionString
+    command: celery -A app.worker.celery beat --loglevel=INFO
+
+  - type: redis
+    name: crewpilot-redis
+    plan: starter
+    maxmemoryPolicy: noeviction

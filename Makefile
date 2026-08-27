@@ -1,4 +1,4 @@
-.PHONY: dev down logs api-test api-lint web-lint demo-seed
+.PHONY: dev down logs api-test api-lint web-lint demo-seed db-backup
 
 dev:
 	docker compose up --build
@@ -20,3 +20,6 @@ web-lint:
 
 demo-seed:
 	docker compose exec api python -m app.scripts.seed_demo
+
+db-backup:
+	docker compose exec api sh /app/scripts/backup_db.sh
