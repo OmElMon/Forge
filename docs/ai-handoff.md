@@ -81,6 +81,7 @@ Backend:
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
 - Invoice workflows: send, approve, convert estimate to invoice, mark paid, void/reopen style transitions.
+- Typed, tenant-scoped domain event stream (`/events`) emitted alongside audits for intake, follow-up, dispatch, estimate, invoice, and customer-touch lifecycles. Append-only, JSON payloads, correlation IDs link multi-step transitions (e.g. estimate convert → invoice).
 - Attention queue API for follow-up gaps and revenue risk.
 - Analytics summary API for revenue, pipeline, conversion, job, and customer metrics.
 - Health/readiness/status endpoints.
@@ -128,10 +129,15 @@ Core resources:
 - `/technicians`
 - `/invoices`
 - `/audit-logs`
+- `/events` — AI/automation-readable event stream (filterable by `aggregate_type`, `aggregate_id`, `event_type`; newest first)
 - `/attention`
 - `/analytics/summary`
 
 The Next.js app proxies browser requests through `apps/web/app/api/*` route handlers so tokens stay in HttpOnly cookies.
+
+## Known gaps
+
+- The invoices UI performs revenue workflow transitions (send/approve/convert/paid/void) via generic `PATCH /invoices/{id}` instead of the dedicated workflow endpoints (`/send`, `/approve`, `/mark-paid`, `/convert-to-invoice`). The domain event stream classifies the resulting transitions, but the PATCH path bypasses transition guards and in-place "convert" does not copy line items or preserve the source estimate. Prefer migrating the UI to the dedicated endpoints.
 
 ## Data and tenancy rules
 
@@ -171,14 +177,13 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 ## Current recommended build queue
 
-Highest-value next slices:
+The AI-ready event model is now in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream). Remaining highest-value next slices:
 
-1. AI-ready event model — normalize intake, follow-up, dispatch, estimate, invoice, and customer-touch events.
-2. Customer profile depth — service addresses, equipment notes, contact preferences, lifetime value, open work.
+1. Customer profile depth — service addresses, equipment notes, contact preferences, lifetime value, open work.
+2. Workflow automation rules — reminders and follow-up tasks generated from operational events (the first consumer of the event stream).
 3. Production observability polish — more actionable smoke checks and operational docs.
-4. Workflow automation rules — reminders and follow-up tasks generated from operational events.
-5. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
-6. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
+4. Calendar/dispatch depth — appointments, job windows, technician assignment confidence.
+5. Integration-ready boundaries — prepare clean adapter interfaces for voice, messaging, payments, and accounting.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 

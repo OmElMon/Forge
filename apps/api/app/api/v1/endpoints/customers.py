@@ -7,10 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
+from app.models.enums import DomainAggregateType, DomainEventType
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 from app.schemas.principal import Principal
+from app.services.events import emit_domain_event
 
 router = APIRouter(prefix="/customers", tags=["customers"])
+
+
+def customer_event_payload(customer: Customer, **extra: object) -> dict[str, object]:
+    return {
+        "status": customer.status,
+        "source": customer.source,
+        "name": customer.name,
+        **extra,
+    }
 
 
 async def get_company_customer(
@@ -51,6 +62,15 @@ async def create_customer(
 ) -> Customer:
     customer = Customer(company_id=principal.company_id, **payload.model_dump())
     db.add(customer)
+    await db.flush()
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=customer.id,
+        aggregate_type=DomainAggregateType.CUSTOMER,
+        event_type=DomainEventType.CUSTOMER_CREATED,
+        payload=customer_event_payload(customer),
+    )
     await db.commit()
     await db.refresh(customer)
     return customer
@@ -74,8 +94,17 @@ async def update_customer(
 ) -> Customer:
     customer = await get_company_customer(customer_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
+    changed_fields = sorted(updates)
     for field, value in updates.items():
         setattr(customer, field, value)
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=customer.id,
+        aggregate_type=DomainAggregateType.CUSTOMER,
+        event_type=DomainEventType.CUSTOMER_UPDATED,
+        payload=customer_event_payload(customer, changed_fields=changed_fields),
+    )
     await db.commit()
     await db.refresh(customer)
     return customer

@@ -46,3 +46,34 @@ class TechnicianStatus(StrEnum):
     AVAILABLE = "available"
     ON_JOB = "on_job"
     OFF_TODAY = "off_today"
+
+
+class DomainEventType(StrEnum):
+    CUSTOMER_CREATED = "customer.created"
+    CUSTOMER_UPDATED = "customer.updated"
+    TECHNICIAN_CREATED = "technician.created"
+    TECHNICIAN_UPDATED = "technician.updated"
+    TECHNICIAN_AVAILABILITY_CHANGED = "technician.availability.changed"
+    JOB_CREATED = "job.created"
+    JOB_UPDATED = "job.updated"
+    JOB_SCHEDULED = "job.scheduled"
+    JOB_ASSIGNED = "job.assigned"
+    JOB_STARTED = "job.started"
+    JOB_COMPLETED = "job.completed"
+    JOB_CANCELED = "job.canceled"
+    INVOICE_CREATED = "invoice.created"
+    INVOICE_UPDATED = "invoice.updated"
+    INVOICE_SENT = "invoice.sent"
+    ESTIMATE_APPROVED = "estimate.approved"
+    ESTIMATE_CONVERTED = "estimate.converted"
+    INVOICE_PAID = "invoice.paid"
+    INVOICE_LINE_ITEM_ADDED = "invoice.line_item.added"
+    INVOICE_LINE_ITEM_UPDATED = "invoice.line_item.updated"
+    INVOICE_LINE_ITEM_REMOVED = "invoice.line_item.deleted"
+
+
+class DomainAggregateType(StrEnum):
+    CUSTOMER = "customer"
+    TECHNICIAN = "technician"
+    JOB = "job"
+    INVOICE = "invoice"

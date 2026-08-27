@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
-from app.models.enums import JobStatus
+from app.models.enums import DomainAggregateType, DomainEventType, JobStatus
 from app.models.job import Job
 from app.models.technician import Technician
 from app.schemas.job import JobAssignment, JobCreate, JobRead, JobSchedule, JobUpdate
 from app.schemas.principal import Principal
 from app.services.audit import record_audit_event
+from app.services.events import emit_domain_event
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -127,6 +128,14 @@ async def create_job(
         resource_id=job.id,
         resource_type="job",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_CREATED,
+        payload=job_audit_context(job),
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -168,6 +177,14 @@ async def update_job(
         resource_id=job.id,
         resource_type="job",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_UPDATED,
+        payload=job_audit_context(job, changed_fields=changed_fields),
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -200,6 +217,14 @@ async def schedule_job(
         resource_id=job.id,
         resource_type="job",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_SCHEDULED,
+        payload=job_audit_context(job),
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -229,6 +254,14 @@ async def assign_job(
         resource_id=job.id,
         resource_type="job",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_ASSIGNED,
+        payload=job_audit_context(job),
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -254,6 +287,14 @@ async def start_job(
         context=job_audit_context(job),
         resource_id=job.id,
         resource_type="job",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_STARTED,
+        payload=job_audit_context(job),
     )
     await db.commit()
     await db.refresh(job)
@@ -281,6 +322,14 @@ async def complete_job(
         resource_id=job.id,
         resource_type="job",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_COMPLETED,
+        payload=job_audit_context(job),
+    )
     await db.commit()
     await db.refresh(job)
     return job
@@ -306,6 +355,14 @@ async def cancel_job(
         context=job_audit_context(job),
         resource_id=job.id,
         resource_type="job",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=job.id,
+        aggregate_type=DomainAggregateType.JOB,
+        event_type=DomainEventType.JOB_CANCELED,
+        payload=job_audit_context(job),
     )
     await db.commit()
     await db.refresh(job)

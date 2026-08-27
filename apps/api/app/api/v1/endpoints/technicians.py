@@ -6,11 +6,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_principal
 from app.db.session import get_db
+from app.models.enums import DomainAggregateType, DomainEventType
 from app.models.technician import Technician
 from app.schemas.principal import Principal
 from app.schemas.technician import TechnicianCreate, TechnicianRead, TechnicianUpdate
+from app.services.events import emit_domain_event
 
 router = APIRouter(prefix="/technicians", tags=["technicians"])
+
+
+def technician_event_payload(technician: Technician, **extra: object) -> dict[str, object]:
+    return {
+        "name": technician.name,
+        "status": technician.status,
+        "skills": technician.skills,
+        **extra,
+    }
 
 
 async def get_company_technician(
@@ -51,6 +62,15 @@ async def create_technician(
 ) -> Technician:
     technician = Technician(company_id=principal.company_id, **payload.model_dump())
     db.add(technician)
+    await db.flush()
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=technician.id,
+        aggregate_type=DomainAggregateType.TECHNICIAN,
+        event_type=DomainEventType.TECHNICIAN_CREATED,
+        payload=technician_event_payload(technician),
+    )
     await db.commit()
     await db.refresh(technician)
     return technician
@@ -74,8 +94,27 @@ async def update_technician(
 ) -> Technician:
     technician = await get_company_technician(technician_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
+    previous_status = technician.status
+    changed_fields = sorted(updates)
     for field, value in updates.items():
         setattr(technician, field, value)
+    event_type = (
+        DomainEventType.TECHNICIAN_AVAILABILITY_CHANGED
+        if "status" in updates and technician.status != previous_status
+        else DomainEventType.TECHNICIAN_UPDATED
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=technician.id,
+        aggregate_type=DomainAggregateType.TECHNICIAN,
+        event_type=event_type,
+        payload=technician_event_payload(
+            technician,
+            changed_fields=changed_fields,
+            previous_status=previous_status,
+        ),
+    )
     await db.commit()
     await db.refresh(technician)
     return technician

@@ -1,6 +1,7 @@
 from app.models.audit import AuditLog
 from app.models.company import Company
 from app.models.customer import Customer
+from app.models.domain_event import DomainEvent
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
@@ -13,6 +14,7 @@ __all__ = [
     "AuditLog",
     "Company",
     "Customer",
+    "DomainEvent",
     "Invoice",
     "InvoiceLineItem",
     "Job",

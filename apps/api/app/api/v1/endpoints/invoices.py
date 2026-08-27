@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_principal
 from app.db.session import get_db
 from app.models.customer import Customer
-from app.models.enums import InvoiceStatus, InvoiceType
+from app.models.enums import (
+    DomainAggregateType,
+    DomainEventType,
+    InvoiceStatus,
+    InvoiceType,
+)
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
@@ -19,8 +24,35 @@ from app.schemas.invoice_line_item import (
 )
 from app.schemas.principal import Principal
 from app.services.audit import record_audit_event
+from app.services.events import emit_domain_event
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+
+def invoice_transition_event_type(
+    *,
+    next_status: InvoiceStatus,
+    next_type: InvoiceType,
+    previous_status: InvoiceStatus,
+    previous_type: InvoiceType,
+) -> DomainEventType:
+    if previous_type == InvoiceType.ESTIMATE and next_type == InvoiceType.INVOICE:
+        return DomainEventType.ESTIMATE_CONVERTED
+    if next_status == InvoiceStatus.SENT:
+        return DomainEventType.INVOICE_SENT
+    if (
+        previous_type == InvoiceType.ESTIMATE
+        and next_status == InvoiceStatus.APPROVED
+        and previous_status in {InvoiceStatus.DRAFT, InvoiceStatus.SENT}
+    ):
+        return DomainEventType.ESTIMATE_APPROVED
+    if (
+        next_type == InvoiceType.INVOICE
+        and next_status == InvoiceStatus.PAID
+        and previous_status != InvoiceStatus.PAID
+    ):
+        return DomainEventType.INVOICE_PAID
+    return DomainEventType.INVOICE_UPDATED
 
 
 def converted_invoice_title(estimate_title: str) -> str:
@@ -198,6 +230,14 @@ async def create_invoice(
         resource_id=invoice.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_CREATED,
+        payload=invoice_audit_context(invoice),
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -221,6 +261,8 @@ async def update_invoice(
 ) -> Invoice:
     invoice = await get_company_invoice(invoice_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
+    previous_status = invoice.status
+    previous_type = invoice.document_type
     if "customer_id" in updates:
         await ensure_company_customer(updates["customer_id"], db, principal)
     next_customer_id = updates.get("customer_id", invoice.customer_id)
@@ -231,6 +273,12 @@ async def update_invoice(
     changed_fields = sorted(updates)
     for field, value in updates.items():
         setattr(invoice, field, value)
+    event_type = invoice_transition_event_type(
+        next_status=invoice.status,
+        next_type=invoice.document_type,
+        previous_status=previous_status,
+        previous_type=previous_type,
+    )
     record_audit_event(
         db,
         principal,
@@ -238,6 +286,19 @@ async def update_invoice(
         context=invoice_audit_context(invoice, changed_fields=changed_fields),
         resource_id=invoice.id,
         resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=event_type,
+        payload=invoice_audit_context(
+            invoice,
+            changed_fields=changed_fields,
+            previous_document_type=previous_type,
+            previous_status=previous_status,
+        ),
     )
     await db.commit()
     await db.refresh(invoice)
@@ -266,6 +327,14 @@ async def send_invoice(
         resource_id=invoice.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_SENT,
+        payload=invoice_audit_context(invoice),
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -293,6 +362,14 @@ async def approve_estimate(
         resource_id=invoice.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.ESTIMATE_APPROVED,
+        payload=invoice_audit_context(invoice),
+    )
     await db.commit()
     await db.refresh(invoice)
     return invoice
@@ -319,6 +396,14 @@ async def mark_invoice_paid(
         context=invoice_audit_context(invoice),
         resource_id=invoice.id,
         resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_PAID,
+        payload=invoice_audit_context(invoice),
     )
     await db.commit()
     await db.refresh(invoice)
@@ -358,6 +443,7 @@ async def convert_estimate_to_invoice(
         db=db,
     )
     estimate.status = InvoiceStatus.CONVERTED
+    correlation_id = uuid4()
     record_audit_event(
         db,
         principal,
@@ -366,6 +452,15 @@ async def convert_estimate_to_invoice(
         resource_id=estimate.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=estimate.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        correlation_id=correlation_id,
+        event_type=DomainEventType.ESTIMATE_CONVERTED,
+        payload=invoice_audit_context(estimate, converted_invoice_id=invoice.id),
+    )
     record_audit_event(
         db,
         principal,
@@ -373,6 +468,15 @@ async def convert_estimate_to_invoice(
         context=invoice_audit_context(invoice, source_estimate_id=estimate.id),
         resource_id=invoice.id,
         resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        correlation_id=correlation_id,
+        event_type=DomainEventType.INVOICE_CREATED,
+        payload=invoice_audit_context(invoice, source_estimate_id=estimate.id),
     )
     await db.commit()
     await db.refresh(estimate)
@@ -420,6 +524,20 @@ async def create_invoice_line_item(
         resource_id=invoice.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_LINE_ITEM_ADDED,
+        payload=invoice_audit_context(
+            invoice,
+            line_item_id=line_item.id,
+            description=line_item.description,
+            unit_amount_cents=line_item.unit_amount_cents,
+            quantity=line_item.quantity,
+        ),
+    )
     await db.commit()
     await db.refresh(line_item)
     return line_item
@@ -454,6 +572,18 @@ async def update_invoice_line_item(
         resource_id=invoice.id,
         resource_type="invoice",
     )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_LINE_ITEM_UPDATED,
+        payload=invoice_audit_context(
+            invoice,
+            changed_fields=sorted(updates),
+            line_item_id=line_item.id,
+        ),
+    )
     await db.commit()
     await db.refresh(line_item)
     return line_item
@@ -478,5 +608,13 @@ async def delete_invoice_line_item(
         context=invoice_audit_context(invoice, line_item_id=line_item_id),
         resource_id=invoice.id,
         resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_LINE_ITEM_REMOVED,
+        payload=invoice_audit_context(invoice, line_item_id=line_item_id),
     )
     await db.commit()

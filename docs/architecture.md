@@ -29,7 +29,7 @@ Global tables are limited to platform identity and operational metadata. Tenant 
 - Platform: audit log, files, notifications, automations, integrations
 - Intelligence: conversations, agent runs, tool calls, recommendations
 
-AI capabilities consume domain services and emit audited domain events. They do not bypass authorization or write directly to business tables.
+Business lifecycle changes are also emitted as typed, append-only domain events in a tenant-scoped event stream. The event stream is the normalized input for workflow automation and AI features; it carries a stable event type, aggregate reference, actor, and JSON payload, and uses correlation IDs to group multi-step transitions. AI capabilities consume domain services and emit audited domain events. They do not bypass authorization or write directly to business tables.
 
 ## API conventions
 
