@@ -227,6 +227,7 @@ export default function CustomersPage() {
   const [equipmentSaving, setEquipmentSaving] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | CustomerStatus>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedCustomer = customers.find((customer) => customer.id === selectedId) ?? customers[0] ?? null;
   const selectedCustomerJobs = selectedCustomer
@@ -333,13 +334,14 @@ export default function CustomersPage() {
 
   const filteredCustomers = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return customers;
-    return customers.filter((customer) =>
-      [customer.name, customer.email, customer.phone, customer.source]
+    return customers.filter((customer) => {
+      if (statusFilter && customer.status !== statusFilter) return false;
+      if (!normalized) return true;
+      return [customer.name, customer.email, customer.phone, customer.source]
         .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalized)),
-    );
-  }, [customers, query]);
+        .some((value) => value!.toLowerCase().includes(normalized));
+    });
+  }, [customers, query, statusFilter]);
 
   async function createCustomer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -518,14 +520,26 @@ export default function CustomersPage() {
               Track leads and active customers before connecting properties and jobs.
             </p>
           </div>
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              placeholder="Search customers…"
-            />
+          <div className="flex w-full gap-2 sm:max-w-md">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                placeholder="Search customers…"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as "" | CustomerStatus)}
+              className="h-10 rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+            >
+              <option value="">All statuses</option>
+              <option value="lead">Leads</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </div>
 
@@ -535,7 +549,9 @@ export default function CustomersPage() {
           <div className="flex items-center justify-between border-b px-5 py-4">
             <div>
               <h2 className="font-semibold">Customer list</h2>
-              <p className="mt-0.5 text-xs text-gray-500">{customers.length} total records</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                {filteredCustomers.length} of {customers.length} records
+              </p>
             </div>
           </div>
 
