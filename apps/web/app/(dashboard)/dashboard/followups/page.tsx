@@ -167,6 +167,7 @@ export default function FollowupsPage() {
   }
 
   useEffect(() => {
+    localStorage.setItem("crewpilot:onboarding:followups_reviewed", "1");
     void loadData();
     void loadRules();
   }, []);

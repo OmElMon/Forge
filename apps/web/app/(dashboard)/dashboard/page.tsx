@@ -7,6 +7,8 @@ import {
   BellRing,
   BriefcaseBusiness,
   CalendarPlus,
+  CheckCircle2,
+  Circle,
   CircleDollarSign,
   Clock3,
   FileText,
@@ -14,7 +16,9 @@ import {
   LoaderCircle,
   Plus,
   ReceiptText,
+  Sparkles,
   UsersRound,
+  X,
 } from "lucide-react";
 
 import type { Principal } from "@/lib/auth";
@@ -181,6 +185,18 @@ const emptyAttentionSummary: AttentionSummary = {
   unscheduled_job_count: 0,
 };
 
+const ONBOARDING_HIDDEN_KEY = "crewpilot:onboarding:hidden";
+const ONBOARDING_FOLLOWUPS_REVIEWED_KEY = "crewpilot:onboarding:followups_reviewed";
+
+type OnboardingStep = {
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+  hrefLabel: string;
+  done: boolean;
+};
+
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -192,6 +208,13 @@ export default function DashboardPage() {
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [onboardingHidden, setOnboardingHidden] = useState(false);
+  const [followupsReviewed, setFollowupsReviewed] = useState(false);
+
+  useEffect(() => {
+    setOnboardingHidden(localStorage.getItem(ONBOARDING_HIDDEN_KEY) === "1");
+    setFollowupsReviewed(localStorage.getItem(ONBOARDING_FOLLOWUPS_REVIEWED_KEY) === "1");
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -298,6 +321,53 @@ export default function DashboardPage() {
     },
   ];
 
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      key: "customer",
+      title: "Add your first customer",
+      description: "Create a customer profile, or convert an intake lead into a customer.",
+      href: "/dashboard/customers",
+      hrefLabel: "Add a customer",
+      done: customers.length > 0,
+    },
+    {
+      key: "job",
+      title: "Create your first job",
+      description: "Schedule work against a customer and keep dispatch in one place.",
+      href: "/dashboard/jobs",
+      hrefLabel: "Create a job",
+      done: jobs.length > 0,
+    },
+    {
+      key: "invoice",
+      title: "Send your first estimate or invoice",
+      description: "Draft and send an estimate or invoice through the money pipeline.",
+      href: "/dashboard/invoices",
+      hrefLabel: "Create an estimate or invoice",
+      done: invoices.length > 0,
+    },
+    {
+      key: "followups",
+      title: "Review your follow-up queue",
+      description: "Check the outreach queue CrewPilot OS raises for you.",
+      href: "/dashboard/followups",
+      hrefLabel: "Review follow-ups",
+      done: followupsReviewed || followups.some((followup) => followup.status === "resolved"),
+    },
+  ];
+  const onboardingDoneCount = onboardingSteps.filter((step) => step.done).length;
+  const onboardingComplete = onboardingDoneCount === onboardingSteps.length;
+
+  function dismissOnboarding() {
+    localStorage.setItem(ONBOARDING_HIDDEN_KEY, "1");
+    setOnboardingHidden(true);
+  }
+
+  function markFollowupsReviewed() {
+    localStorage.setItem(ONBOARDING_FOLLOWUPS_REVIEWED_KEY, "1");
+    setFollowupsReviewed(true);
+  }
+
   return (
     <div className="mx-auto max-w-[1440px]">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -326,6 +396,93 @@ export default function DashboardPage() {
       </div>
 
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
+
+      {!loading && !onboardingHidden && onboardingComplete ? (
+        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-panel">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-emerald-600 text-white">
+                <CheckCircle2 className="size-6" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-emerald-900">Your setup is complete</h2>
+                <p className="mt-0.5 text-sm text-emerald-800">
+                  Customers, jobs, estimates or invoices, and follow-ups are wired up. CrewPilot OS is ready for real work.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissOnboarding}
+              className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {!loading && !onboardingHidden && !onboardingComplete ? (
+        <section className="mt-6 rounded-xl border bg-white p-5 shadow-panel">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-orange-100 text-orange-600">
+                <Sparkles className="size-5" />
+              </span>
+              <div>
+                <h2 className="font-semibold">Get set up in minutes</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {onboardingDoneCount} of {onboardingSteps.length} setup steps finished.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissOnboarding}
+              title="Hide checklist"
+              className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full bg-orange-500 transition-all"
+              style={{ width: `${(onboardingDoneCount / onboardingSteps.length) * 100}%` }}
+            />
+          </div>
+          <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {onboardingSteps.map((step) => (
+              <li
+                key={step.key}
+                className={`flex gap-3 rounded-xl border p-3 ${step.done ? "border-emerald-100 bg-emerald-50/50" : "border-gray-200 bg-white"}`}
+              >
+                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center ${step.done ? "text-emerald-600" : "text-gray-300"}`}>
+                  {step.done ? <CheckCircle2 className="size-5" /> : <Circle className="size-5" />}
+                </span>
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${step.done ? "text-emerald-900" : "text-gray-900"}`}>
+                    {step.title}
+                  </p>
+                  <p className="mt-0.5 text-xs leading-5 text-gray-500">{step.description}</p>
+                  {!step.done && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (step.key === "followups") markFollowupsReviewed();
+                        window.location.href = step.href;
+                      }}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-orange-600 transition hover:text-orange-700"
+                    >
+                      {step.hrefLabel} →
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (

@@ -229,7 +229,10 @@ Use this order unless the user explicitly changes priorities.
    Next in order is the first-run onboarding checklist.
 
 3. First-run onboarding checklist
-   - guide new owners through first customer, job, invoice, and follow-up.
+   - done: dashboard shows a progress checklist guiding new owners through first customer/intake record, first job, first estimate or invoice, and follow-up review;
+   - steps complete from real data (customers/jobs/invoices) plus a reviewed flag when the owner opens the follow-up queue;
+   - checklist shows a completion state once every setup step is done.
+   Next in order is password reset.
 
 4. Password reset
    - safe token model;
