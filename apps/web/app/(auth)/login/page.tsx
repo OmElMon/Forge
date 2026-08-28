@@ -64,9 +64,14 @@ export default function LoginPage() {
               </div>
             </label>
             {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-            <button disabled={submitting} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
-              {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
-            </button>
+            <div className="flex items-center justify-between">
+              <button disabled={submitting} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+                {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
+              </button>
+              <Link href="/forgot-password" className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                Forgot password?
+              </Link>
+            </div>
           </form>
           <p className="mt-6 text-center text-sm text-gray-500">
             Starting a new company? <Link href="/register" className="font-semibold text-orange-600 hover:text-orange-700">Create your workspace</Link>

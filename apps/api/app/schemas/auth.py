@@ -17,6 +17,22 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=12, max_length=128)
+
+
+class ResetCodeDelivery(BaseModel):
+    status: str
+    channel: str
+    code_valid_seconds: int
+    dev_code: str | None = None
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

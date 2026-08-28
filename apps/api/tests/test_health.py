@@ -4,8 +4,8 @@ from app.api.v1.endpoints.health import api_version, migration_head
 from app.db.session import get_db
 from app.main import app
 
-LATEST_MIGRATION = "20260827_0016"
-STALE_MIGRATION = "20260827_0015"
+LATEST_MIGRATION = "20260828_0017"
+STALE_MIGRATION = "20260827_0016"
 
 
 def test_health_reports_identity_and_version() -> None:

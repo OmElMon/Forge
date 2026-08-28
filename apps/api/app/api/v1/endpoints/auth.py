@@ -3,9 +3,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_principal
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, RefreshRequest, SignUpRequest, TokenPair
+from app.schemas.auth import (
+    LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    RefreshRequest,
+    ResetCodeDelivery,
+    SignUpRequest,
+    TokenPair,
+)
 from app.schemas.principal import Principal
 from app.services.auth import authenticate, register, revoke_refresh_token, rotate_refresh_token
+from app.services.password_reset import confirm_password_reset, request_password_reset
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -34,3 +43,20 @@ async def logout(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) ->
 @router.get("/me", response_model=Principal)
 async def me(principal: Principal = Depends(get_principal)) -> Principal:
     return principal
+
+
+@router.post(
+    "/password-reset", response_model=ResetCodeDelivery, status_code=status.HTTP_202_ACCEPTED
+)
+async def password_reset(
+    payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)
+) -> ResetCodeDelivery:
+    return await request_password_reset(db, payload)
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def password_reset_confirm(
+    payload: PasswordResetConfirmRequest, db: AsyncSession = Depends(get_db)
+) -> Response:
+    await confirm_password_reset(db, payload)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

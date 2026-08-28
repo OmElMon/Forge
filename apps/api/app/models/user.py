@@ -7,6 +7,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.membership import Membership
+    from app.models.password_reset import PasswordReset
     from app.models.session import RefreshSession
 
 
@@ -22,5 +23,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     refresh_sessions: Mapped[list["RefreshSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    password_resets: Mapped[list["PasswordReset"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

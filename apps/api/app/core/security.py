@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from secrets import token_urlsafe
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -43,3 +44,17 @@ def decode_token(token: str) -> dict[str, Any]:
 
 def fingerprint_token(token: str) -> str:
     return sha256(token.encode()).hexdigest()
+
+
+def create_password_reset_token() -> tuple[str, str]:
+    token = token_urlsafe(32)
+    return token, fingerprint_token(token)
+
+
+# PIN for local/dev flows (recording email provider): 32-bit, BCrypt-hashed.
+def hash_reset_pin(pin: str) -> str:
+    return password_hash.hash(pin)
+
+
+def verify_reset_pin(pin: str, encoded: str) -> bool:
+    return password_hash.verify(pin, encoded)

@@ -92,10 +92,8 @@ Needed slices:
    - keep membership creation tenant-safe.
 
 3. Account recovery basics
-   - password reset request;
-   - reset token lifecycle;
-   - expiry and one-time-use rules;
-   - email delivery boundary or local/dev fake.
+   - done: password reset request + single-use reset token lifecycle with expiry and one-time use;
+   - email delivery boundary with local/dev fake (in-UI dev code when no provider is configured).
 
 4. Production smoke routine
    - manual smoke test docs;
@@ -235,10 +233,11 @@ Use this order unless the user explicitly changes priorities.
    Next in order is password reset.
 
 4. Password reset
-   - safe token model;
-   - expiration;
-   - one-time use;
-   - local fake email/provider boundary first.
+   - done: `POST /auth/password-reset` + `POST /auth/password-reset/confirm`;
+   - hashed single-use token, 30-minute expiry, one-time use, resets revoke all refresh sessions + audit entry;
+   - delivered through the messaging boundary (disabled/recording providers fall back to an in-UI dev code);
+   - web flows: `/forgot-password` and `/reset-password` with a "Forgot password?" link on login.
+   Next in order is team invite basics.
 
 5. Team invite basics
    - invite user;

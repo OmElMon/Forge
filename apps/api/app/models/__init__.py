@@ -9,6 +9,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
 from app.models.membership import Membership
+from app.models.password_reset import PasswordReset
 from app.models.service_address import ServiceAddress
 from app.models.session import RefreshSession
 from app.models.technician import Technician
@@ -26,6 +27,7 @@ __all__ = [
     "IntakeRecord",
     "Job",
     "Membership",
+    "PasswordReset",
     "RefreshSession",
     "ServiceAddress",
     "Technician",
