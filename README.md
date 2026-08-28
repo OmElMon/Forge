@@ -72,11 +72,12 @@ See `docs/stability.md` for the current production assumptions, credit-control g
 
 CrewPilot OS ships in small vertical slices. See `docs/workflows.md` for what should be handled manually, what Codex can automate, and how each feature should move from local changes to production validation.
 
-If another AI assistant or a future Codex session continues the project, start with `docs/ai-handoff.md`.
+If another AI assistant or a future Codex session continues the project, start with `docs/ai-handoff.md`, then use `docs/onboarding-milestones.md` for the current onboarding ladder and next build order.
 
 ## Next product slices
 
-- AI-ready event model for intake, follow-up, dispatch, estimate, invoice, and customer-touch events
-- Customer profile depth: service addresses, equipment notes, preferences, lifetime value, and open work
-- Workflow automation rules for reminders, follow-ups, and dispatch gaps
-- Calendar/dispatch depth and integration-ready adapter boundaries
+- Finish intake/lead flow in the web UI
+- Align invoice UI actions with dedicated workflow endpoints
+- Add first-run onboarding checklist
+- Add password reset and team invite basics
+- Add production monitoring/onboarding guardrails for friendly testers

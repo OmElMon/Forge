@@ -77,7 +77,7 @@ Backend:
 - Workspace registration and login.
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
-- Alembic migrations through `20260827_0015`.
+- Alembic migrations through `20260827_0016`.
 - Rate limiting (in-process, keyed by client IP via `X-Forwarded-For`): auth endpoints capped at `rate_limit_auth_per_minute` (default 30/min) and the general API at `rate_limit_api_per_minute` (default 200/min), returning 429 + `Retry-After`. Health/ready/status/openapi/docs/root are exempt. Toggle with `rate_limiting_enabled`; counters are per-process (swap for a shared store when scaling beyond one API instance).
 - Integration-ready adapter boundaries (no live providers): ports in `app/services/integrations.py` (messaging/voice/payments/accounting), disabled-by-default adapter stubs in `app/integrations/`, env-gated via `settings.*_provider`, per-adapter event contracts in `docs/integration-contracts.md`. Activation is manual-only (user owns provider accounts/webhooks).
 - Row-level security enabled on application tables as defense in depth.
@@ -172,7 +172,7 @@ Do not:
 
 When asked to continue building:
 
-1. Read this file, `docs/workflows.md`, `docs/roadmap.md`, and `docs/stability.md`.
+1. Read this file, `docs/onboarding-milestones.md`, `docs/workflows.md`, `docs/roadmap.md`, and `docs/stability.md`.
 2. Check `git status --short`.
 3. Pick one small high-leverage slice.
 4. Prefer backend/API/platform work when Netlify credits are low or frontend publishing is locked.
@@ -189,7 +189,8 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and geography dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). Technician workload signals shipped too: `GET /technicians/{id}/workload` reports open/in-progress/scheduled job counts, next scheduled start, and the current in-progress job for a technician, alongside the status flags (availability/off-day handling) already modeled on `Technician`. A scheduled/proactive delivery pass is now in place too: beat-driven `automation.followup_sweep` sweeps every company via `run_followup_automation` (materialize → deliver due → notify) and a `followup.due` watermark delivers each open follow-up exactly once. Message delivery is wired: due follow-ups flow through the messaging port (`followup.due` → `MessagingProvider.send` with the follow-up's `correlation_id`, recipient resolved from customer `preferred_contact`/`sms_opt_in`). A new rule materializes a "create and send invoice" follow-up when a job completes. Integration-ready boundaries shipped: adapter ports live in `app/services/integrations.py`, disabled-by-default stub adapters in `app/integrations/` (messaging, voice, payments, accounting), provider choice gated by `settings.*_provider`, and per-adapter event contracts documented in `docs/integration-contracts.md`. The Customers UI now consumes the full `CustomerDetail` (LTV, open work/pipeline stats, service addresses, and equipment managed inline through new proxy routes). Automation rules are now policy-managed (declared registry + per-company `automation_policies` toggles via `/followups/rules`) and self-resolving (sending an invoice for a completed job auto-resolves its "create and send invoice" follow-up with `reason: "invoice.sent"`). Production hardening completed the ops foundation: in-process rate limiting (auth 30/min, API 200/min via `rate_limit_auth_per_minute`/`rate_limit_api_per_minute`), a Render blueprint (`render.yaml` covering api/worker/beat/redis), and logical-backup tooling (`apps/api/scripts/backup_db.sh`, `make db-backup`). Remaining highest-value next slices:
 
-1. Real messaging adapter wiring — the user activates a provider account and sets `messaging_provider=...`; the port and delivery path are ready, and the follow-up policy surface can double as the settings UI for toggling rules.
+1. Finish intake/lead flow — backend intake records exist; expose intake records in the web UI and complete the lead → customer → job handoff.
+2. Real messaging adapter wiring — the user activates a provider account and sets `messaging_provider=...`; the port and delivery path are ready, and the follow-up policy surface can double as the settings UI for toggling rules.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 
