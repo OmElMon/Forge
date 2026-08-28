@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   ContactRound,
   Gauge,
+  Inbox,
   LogOut,
   Menu,
   Search,
@@ -25,6 +26,7 @@ import type { Principal } from "@/lib/auth";
 
 const nav = [
   { label: "Overview", icon: Gauge, href: "/dashboard" },
+  { label: "Intake", icon: Inbox, href: "/dashboard/intake" },
   { label: "Customers", icon: ContactRound, href: "/dashboard/customers" },
   { label: "Jobs", icon: BriefcaseBusiness, href: "/dashboard/jobs" },
   { label: "Follow-ups", icon: Bell, href: "/dashboard/followups" },

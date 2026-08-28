@@ -18,12 +18,15 @@ from app.models.company import Company
 from app.models.customer import Customer
 from app.models.enums import (
     CustomerStatus,
+    IntakeRecordKind,
+    IntakeRecordStatus,
     InvoiceStatus,
     InvoiceType,
     JobStatus,
     TechnicianStatus,
     UserRole,
 )
+from app.models.intake_record import IntakeRecord
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
@@ -83,11 +86,52 @@ async def _get_or_create_demo_company() -> Company:
 async def _replace_demo_business_data(company: Company) -> None:
     now = datetime.now(UTC)
     async with AsyncSessionLocal() as db:
+        await db.execute(delete(IntakeRecord).where(IntakeRecord.company_id == company.id))
         await db.execute(delete(Invoice).where(Invoice.company_id == company.id))
         await db.execute(delete(Job).where(Job.company_id == company.id))
         await db.execute(delete(Technician).where(Technician.company_id == company.id))
         await db.execute(delete(Customer).where(Customer.company_id == company.id))
         await db.flush()
+
+        intake_records = [
+            IntakeRecord(
+                company_id=company.id,
+                kind=IntakeRecordKind.LEAD,
+                status=IntakeRecordStatus.NEW,
+                name="Nora Mahmoud",
+                phone="555-204-8831",
+                source="Web form",
+                notes="Asked about whole-home seasonal maintenance plans.",
+            ),
+            IntakeRecord(
+                company_id=company.id,
+                kind=IntakeRecordKind.CALL,
+                status=IntakeRecordStatus.CONTACTED,
+                name="Owen Baker",
+                phone="555-114-3990",
+                source="Missed call",
+                notes="Left a message about a no-heat issue. Called back and left voicemail.",
+            ),
+            IntakeRecord(
+                company_id=company.id,
+                kind=IntakeRecordKind.LEAD,
+                status=IntakeRecordStatus.NEW,
+                name=None,
+                phone="555-670-2214",
+                source="Website callback",
+                notes="Requested a callback about AC sizing for a 1950 sq ft house.",
+            ),
+            IntakeRecord(
+                company_id=company.id,
+                kind=IntakeRecordKind.CALL,
+                status=IntakeRecordStatus.CLOSED,
+                name="Priya Raman",
+                phone="555-087-6642",
+                source="Phone call",
+                notes="Only wanted a filter size; no service needed.",
+            ),
+        ]
+        db.add_all(intake_records)
 
         customers = [
             Customer(

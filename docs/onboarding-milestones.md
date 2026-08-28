@@ -53,7 +53,7 @@ Already built:
 - follow-up taskboard;
 - audit/activity timeline;
 - dispatch suggestions;
-- intake records backend;
+- intake records backend + web UI (create/list/filter/edit/convert + job handoff);
 - domain event stream;
 - production health/status endpoints;
 - rate limiting;
@@ -62,9 +62,7 @@ Already built:
 
 Remaining work:
 
-- expose intake records in the web UI;
-- connect intake conversion clearly to customer/job creation;
-- ensure empty/loading/error states are understandable;
+- ensure empty/loading/error states stay understandable as data grows;
 - keep the invoice UI aligned with dedicated workflow endpoints instead of generic updates.
 
 Acceptance criteria:
@@ -220,10 +218,10 @@ Acceptance criteria:
 Use this order unless the user explicitly changes priorities.
 
 1. Finish intake/lead flow
-   - backend exists;
-   - expose intake records in UI;
-   - convert intake to customer;
-   - optionally launch job creation from converted customer.
+   - done: intake records are exposed in a web UI queue;
+   - convert intake to customer (one click, emits events/audit);
+   - job creation launch from converted customer (inline handoff form).
+   Next in order is the invoice workflow UI gap.
 
 2. Fix invoice workflow UI gap
    - replace generic invoice `PATCH` transitions with dedicated workflow endpoints;

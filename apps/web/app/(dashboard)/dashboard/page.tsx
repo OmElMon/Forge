@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   Clock3,
   FileText,
+  Inbox,
   LoaderCircle,
   Plus,
   ReceiptText,
@@ -59,6 +60,17 @@ type FollowupTask = {
   title: string;
   status: "open" | "resolved";
   due_at: string | null;
+};
+
+type IntakeStatus = "new" | "contacted" | "closed" | "converted";
+
+type IntakeRecord = {
+  id: string;
+  kind: "lead" | "call";
+  status: IntakeStatus;
+  name: string | null;
+  phone: string | null;
+  source: string | null;
 };
 
 type AttentionCategory =
@@ -176,6 +188,7 @@ export default function DashboardPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [attentionSummary, setAttentionSummary] = useState<AttentionSummary>(emptyAttentionSummary);
   const [followups, setFollowups] = useState<FollowupTask[]>([]);
+  const [intakeRecords, setIntakeRecords] = useState<IntakeRecord[]>([]);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -192,6 +205,7 @@ export default function DashboardPage() {
           techniciansResponse,
           attentionResponse,
           followupsResponse,
+          intakeResponse,
         ] = await Promise.all([
           fetch("/api/customers", { cache: "no-store" }),
           fetch("/api/jobs", { cache: "no-store" }),
@@ -199,6 +213,7 @@ export default function DashboardPage() {
           fetch("/api/technicians", { cache: "no-store" }),
           fetch("/api/attention?limit=6", { cache: "no-store" }),
           fetch("/api/followups", { cache: "no-store" }),
+          fetch("/api/intake", { cache: "no-store" }),
         ]);
         const customersPayload = await readApiResponse(customersResponse);
         const jobsPayload = await readApiResponse(jobsResponse);
@@ -206,13 +221,15 @@ export default function DashboardPage() {
         const techniciansPayload = await readApiResponse(techniciansResponse);
         const attentionPayload = await readApiResponse(attentionResponse);
         const followupsPayload = await readApiResponse(followupsResponse);
+        const intakePayload = await readApiResponse(intakeResponse);
         if (
           !customersResponse.ok ||
           !jobsResponse.ok ||
           !invoicesResponse.ok ||
           !techniciansResponse.ok ||
           !attentionResponse.ok ||
-          !followupsResponse.ok
+          !followupsResponse.ok ||
+          !intakeResponse.ok
         ) {
           setError("CrewPilot OS could not load the latest operations data.");
           return;
@@ -223,6 +240,7 @@ export default function DashboardPage() {
         setTechnicians(techniciansPayload as Technician[]);
         setAttentionSummary(attentionPayload as AttentionSummary);
         setFollowups(followupsPayload as FollowupTask[]);
+        setIntakeRecords(intakePayload as IntakeRecord[]);
       } catch {
         setError("CrewPilot OS could not reach the operations service.");
       } finally {
@@ -255,6 +273,9 @@ export default function DashboardPage() {
   const availableTechnicians = technicians.filter((technician) => technician.status === "available").length;
   const ownerName = principal?.full_name.trim().split(/\s+/)[0] || "there";
   const openFollowups = followups.filter((followup) => followup.status === "open");
+  const intakeNeedsResponse = intakeRecords.filter(
+    (record) => record.status === "new" || record.status === "contacted",
+  );
   const followupsDueToday = openFollowups.filter(
     (followup) =>
       followup.due_at && dateKey(new Date(followup.due_at)) === dateKey(today),
@@ -432,6 +453,50 @@ export default function DashboardPage() {
             ) : (
               <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-gray-500">
                 Clean outreach queue. No follow-ups need a nudge right now.
+              </div>
+            )}
+          </article>
+          <article className="rounded-xl border bg-white p-5 shadow-panel">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Lead intake</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  Presale touchpoints waiting to become customers.
+                </p>
+              </div>
+              <span className="grid size-9 place-items-center rounded-lg bg-amber-50 text-amber-700">
+                <Inbox className="size-4" />
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Need response</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-950">
+                  {loading ? "—" : intakeNeedsResponse.length}
+                </p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Converted</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-950">
+                  {loading
+                    ? "—"
+                    : intakeRecords.filter((record) => record.status === "converted").length}
+                </p>
+              </div>
+            </div>
+            {!loading && intakeNeedsResponse.length > 0 ? (
+              <Link
+                href="/dashboard/intake"
+                className="mt-4 flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 transition hover:border-amber-200 hover:bg-amber-50"
+              >
+                <span className="text-sm font-semibold text-amber-800">
+                  {intakeNeedsResponse.length} intake record{intakeNeedsResponse.length === 1 ? "" : "s"} to follow up
+                </span>
+                <span className="text-sm font-semibold text-amber-700">Review →</span>
+              </Link>
+            ) : (
+              <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-gray-500">
+                Intake is clear. No leads or calls need a response right now.
               </div>
             )}
           </article>

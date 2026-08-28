@@ -3,7 +3,7 @@
 This is the first file an AI coding assistant should read before continuing CrewPilot OS.
 It is intentionally repo-safe: do not add secrets, private credentials, customer data, or sensitive market strategy here.
 
-Last updated: 2026-08-27.
+Last updated: 2026-08-28.
 
 ## Product in one sentence
 
@@ -96,7 +96,8 @@ Frontend:
 
 - Login and workspace registration.
 - Protected dashboard shell.
-- Overview dashboard with live operational data, including a revenue-recovery/attention panel and an outreach-queue panel that surfaces open/due-today/overdue follow-up counts with a link into the Follow-ups taskboard.
+- Overview dashboard with live operational data, including a revenue-recovery/attention panel, an outreach-queue panel that surfaces open/due-today/overdue follow-up counts with a link into the Follow-ups taskboard, and a lead-intake panel that shows presale touchpoints needing a response with a link into the Intake queue.
+- Intake page: presale lead/call capture with create/list/filter behavior (status chips: new/contacted/converted/closed, kind filter, free-text search), inline edit, and a one-click "Convert to customer" action that creates a `LEAD` customer and lets the agent launch a job handoff for the new customer (title/amount/scheduled time/technician) right from the same record. New proxy routes under `apps/web/app/api/intake*` mirror the intake API. The Overview lead-intake panel and the left-nav "Intake" item link into it.
 - Activity page: tenant-wide audit timeline (newest first, grouped by day) backed by `/api/audit-logs?limit=200`, with resource-type filter chips and human-readable action labels/icons.
 - Customers page with create/list behavior and customer detail signals. List + profile now surface the full `CustomerDetail` depth through new proxy routes: lifetime value, open-work and pipeline stats, and inline management of service addresses and equipment (add/remove), plus preferred-contact and SMS opt-in editing. New proxy routes under `apps/web/app/api/customers/[id]/addresses*` and `.../equipment*` mirror the customers `/[id]` pattern.
 - Jobs page with workflow actions.
@@ -136,6 +137,7 @@ Core resources:
 - `/jobs`
 - `/technicians`
 - `/invoices`
+- `/intake` — presale lead/call capture (`GET` list with `status`/`kind` filters, `POST` create, `PATCH /{id}` update); `POST /intake/{id}/convert` creates a linked `LEAD` customer and emits `intake.record.converted` + `customer.created` events
 - `/audit-logs`
 - `/events` — AI/automation-readable event stream (filterable by `aggregate_type`, `aggregate_id`, `event_type`; newest first)
 - `/followups` — automation follow-up queue (`GET` materializes, delivers due, commits; `POST /followups/{id}/resolve`); `/followups/rules` lists the policy registry and `PATCH /followups/rules/{rule_type}` toggles a company's enable/disable
@@ -189,7 +191,7 @@ Autopilot mode is bounded. Do not run forever. One or two small connected slices
 
 The AI-ready event model is in place (`/events`, typed `DomainEventType` catalog, append-only tenant-scoped stream), customer profile depth shipped (contact preferences, service addresses, equipment records, lifetime value + open work on `CustomerDetail`), workflow automation rules landed (follow-up tasks materialized from the event stream via `automation_rules`), production observability polish shipped (hardened `/health`, `/ready`, `/status`, and a sturdier production-smoke workflow with cold-start retries), and geography dispatch depth shipped (jobs carry `required_skills`; `GET /dispatch/suggestions` ranks technicians by skill fit, availability, and schedule load). Technician workload signals shipped too: `GET /technicians/{id}/workload` reports open/in-progress/scheduled job counts, next scheduled start, and the current in-progress job for a technician, alongside the status flags (availability/off-day handling) already modeled on `Technician`. A scheduled/proactive delivery pass is now in place too: beat-driven `automation.followup_sweep` sweeps every company via `run_followup_automation` (materialize → deliver due → notify) and a `followup.due` watermark delivers each open follow-up exactly once. Message delivery is wired: due follow-ups flow through the messaging port (`followup.due` → `MessagingProvider.send` with the follow-up's `correlation_id`, recipient resolved from customer `preferred_contact`/`sms_opt_in`). A new rule materializes a "create and send invoice" follow-up when a job completes. Integration-ready boundaries shipped: adapter ports live in `app/services/integrations.py`, disabled-by-default stub adapters in `app/integrations/` (messaging, voice, payments, accounting), provider choice gated by `settings.*_provider`, and per-adapter event contracts documented in `docs/integration-contracts.md`. The Customers UI now consumes the full `CustomerDetail` (LTV, open work/pipeline stats, service addresses, and equipment managed inline through new proxy routes). Automation rules are now policy-managed (declared registry + per-company `automation_policies` toggles via `/followups/rules`) and self-resolving (sending an invoice for a completed job auto-resolves its "create and send invoice" follow-up with `reason: "invoice.sent"`). Production hardening completed the ops foundation: in-process rate limiting (auth 30/min, API 200/min via `rate_limit_auth_per_minute`/`rate_limit_api_per_minute`), a Render blueprint (`render.yaml` covering api/worker/beat/redis), and logical-backup tooling (`apps/api/scripts/backup_db.sh`, `make db-backup`). Remaining highest-value next slices:
 
-1. Finish intake/lead flow — backend intake records exist; expose intake records in the web UI and complete the lead → customer → job handoff.
+1. Finish intake/lead flow — done: intake records are exposed in a dedicated `/dashboard/intake` queue (proxy routes under `apps/web/app/api/intake*`), with create/list/filter, inline edit, one-click convert-to-customer, and an inline job handoff that launches a job for the new customer; the Overview dashboard surfaces intake needing a response.
 2. Real messaging adapter wiring — the user activates a provider account and sets `messaging_provider=...`; the port and delivery path are ready, and the follow-up policy surface can double as the settings UI for toggling rules.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
