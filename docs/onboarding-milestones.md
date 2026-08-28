@@ -221,12 +221,12 @@ Use this order unless the user explicitly changes priorities.
    - done: intake records are exposed in a web UI queue;
    - convert intake to customer (one click, emits events/audit);
    - job creation launch from converted customer (inline handoff form).
-   Next in order is the invoice workflow UI gap.
 
 2. Fix invoice workflow UI gap
-   - replace generic invoice `PATCH` transitions with dedicated workflow endpoints;
-   - preserve estimate-to-invoice behavior;
-   - keep event/audit behavior consistent.
+   - done: invoice transitions use dedicated workflow endpoints (`/api/invoices/[id]/[action]`);
+   - convert estimate to invoice creates a draft invoice with line items copied and keeps the source estimate;
+   - event/audit behavior consistent.
+   Next in order is the first-run onboarding checklist.
 
 3. First-run onboarding checklist
    - guide new owners through first customer, job, invoice, and follow-up.

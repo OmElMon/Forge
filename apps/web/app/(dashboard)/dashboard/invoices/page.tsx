@@ -49,10 +49,14 @@ type InvoiceLineItem = {
   updated_at: string;
 };
 
+type InvoiceWorkflowAction = "approve" | "convert-to-invoice" | "mark-paid" | "send";
+
 type RevenueAction = {
   label: string;
-  patch: Partial<Pick<Invoice, "document_type" | "status">>;
   tone?: "default" | "primary" | "danger";
+  kind: "patch" | "workflow";
+  workflow?: InvoiceWorkflowAction;
+  status?: InvoiceStatus;
 };
 
 const statusStyles: Record<InvoiceStatus, string> = {
@@ -80,56 +84,64 @@ const typeLabels: Record<InvoiceType, string> = {
 
 function revenueActionsFor(invoice: Invoice): RevenueAction[] {
   if (invoice.status === "void") {
-    return [{ label: "Reopen as draft", patch: { status: "draft" } }];
+    return [{ kind: "patch", label: "Reopen as draft", status: "draft" }];
   }
 
   if (invoice.document_type === "estimate") {
     if (invoice.status === "draft") {
       return [
-        { label: "Send estimate", patch: { status: "sent" }, tone: "primary" },
-        { label: "Void estimate", patch: { status: "void" }, tone: "danger" },
+        { kind: "workflow", label: "Send estimate", tone: "primary", workflow: "send" },
+        { kind: "patch", label: "Void estimate", status: "void", tone: "danger" },
       ];
     }
 
     if (invoice.status === "sent") {
       return [
-        { label: "Approve estimate", patch: { status: "approved" }, tone: "primary" },
-        { label: "Void estimate", patch: { status: "void" }, tone: "danger" },
+        { kind: "workflow", label: "Approve estimate", tone: "primary", workflow: "approve" },
+        { kind: "patch", label: "Void estimate", status: "void", tone: "danger" },
       ];
     }
 
     if (invoice.status === "approved") {
       return [
         {
+          kind: "workflow",
           label: "Convert to invoice",
-          patch: { document_type: "invoice", status: "sent" },
           tone: "primary",
+          workflow: "convert-to-invoice",
         },
       ];
     }
 
     if (invoice.status === "converted") {
-      return [{ label: "Reopen as draft", patch: { status: "draft" } }];
+      return [{ kind: "patch", label: "Reopen as draft", status: "draft" }];
     }
   }
 
   if (invoice.document_type === "invoice") {
     if (invoice.status === "draft") {
       return [
-        { label: "Send invoice", patch: { status: "sent" }, tone: "primary" },
-        { label: "Void invoice", patch: { status: "void" }, tone: "danger" },
+        { kind: "workflow", label: "Send invoice", tone: "primary", workflow: "send" },
+        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
       ];
     }
 
     if (invoice.status === "sent") {
       return [
-        { label: "Mark paid", patch: { status: "paid" }, tone: "primary" },
-        { label: "Void invoice", patch: { status: "void" }, tone: "danger" },
+        { kind: "workflow", label: "Mark paid", tone: "primary", workflow: "mark-paid" },
+        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
+      ];
+    }
+
+    if (invoice.status === "approved") {
+      return [
+        { kind: "workflow", label: "Mark paid", tone: "primary", workflow: "mark-paid" },
+        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
       ];
     }
 
     if (invoice.status === "paid") {
-      return [{ label: "Reopen as sent", patch: { status: "sent" } }];
+      return [{ kind: "patch", label: "Reopen as sent", status: "sent" }];
     }
   }
 
@@ -382,25 +394,64 @@ export default function InvoicesPage() {
     }
   }
 
-  async function updateRevenueWorkflow(invoice: Invoice, action: RevenueAction) {
+  async function runRevenueWorkflow(invoice: Invoice, action: RevenueAction) {
     setWorkflowUpdatingId(invoice.id);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/invoices/${invoice.id}`, {
-        body: JSON.stringify(action.patch),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-      const result = await readApiResponse(response);
-      if (!response.ok) {
-        setError(errorMessage(result, `Unable to update workflow. Status ${response.status}.`));
+      if (action.kind === "workflow" && action.workflow) {
+        const response = await fetch(`/api/invoices/${invoice.id}/${action.workflow}`, {
+          body: "{}",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const result = await readApiResponse(response);
+        if (!response.ok) {
+          setError(errorMessage(result, `Unable to update workflow. Status ${response.status}.`));
+          return;
+        }
+
+        if (action.workflow === "convert-to-invoice") {
+          const converted = result as { source_estimate: Invoice; invoice: Invoice };
+          setInvoices((current) => [
+            converted.invoice,
+            ...current.map((item) =>
+              item.id === converted.source_estimate.id ? converted.source_estimate : item,
+            ),
+          ]);
+          setSelectedId(converted.invoice.id);
+          setNotice(
+            `${typeLabels[converted.source_estimate.document_type]} converted — draft invoice created with line items copied.`,
+          );
+          return;
+        }
+
+        const updated = result as Invoice;
+        setInvoices((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        setSelectedId(updated.id);
+        setNotice(`${typeLabels[updated.document_type]} moved to ${statusLabels[updated.status].toLowerCase()}.`);
         return;
       }
-      const updated = result as Invoice;
-      setInvoices((current) => current.map((invoice) => (invoice.id === updated.id ? updated : invoice)));
-      setSelectedId(updated.id);
-      setNotice(`${typeLabels[updated.document_type]} moved to ${statusLabels[updated.status].toLowerCase()}.`);
+
+      if (action.kind === "patch" && action.status) {
+        const response = await fetch(`/api/invoices/${invoice.id}`, {
+          body: JSON.stringify({ status: action.status }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        });
+        const result = await readApiResponse(response);
+        if (!response.ok) {
+          setError(errorMessage(result, `Unable to update workflow. Status ${response.status}.`));
+          return;
+        }
+        const updated = result as Invoice;
+        setInvoices((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        setSelectedId(updated.id);
+        setNotice(`${typeLabels[updated.document_type]} moved to ${statusLabels[updated.status].toLowerCase()}.`);
+        return;
+      }
+
+      setError("This workflow action is not configured.");
     } catch {
       setError("CrewPilot OS could not update this workflow.");
     } finally {
@@ -707,7 +758,7 @@ export default function InvoicesPage() {
             <RevenueActions
               disabled={workflowUpdatingId === selectedInvoice.id}
               invoice={selectedInvoice}
-              onRun={(action) => updateRevenueWorkflow(selectedInvoice, action)}
+              onRun={(action) => runRevenueWorkflow(selectedInvoice, action)}
             />
 
             <form key={selectedInvoice.id} onSubmit={updateInvoice} className="mt-5 space-y-4 border-t pt-5">
