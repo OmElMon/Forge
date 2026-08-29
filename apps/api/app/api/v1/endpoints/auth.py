@@ -7,6 +7,8 @@ from app.core.lockout import LOGIN_LOCKOUT
 from app.core.ratelimit import rate_limit_key
 from app.db.session import get_db
 from app.schemas.auth import (
+    EmailVerifyConfirmRequest,
+    EmailVerifyRequest,
     LoginRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
@@ -18,6 +20,10 @@ from app.schemas.auth import (
 from app.schemas.invite import InviteAcceptRequest
 from app.schemas.principal import Principal
 from app.services.auth import authenticate, register, revoke_refresh_token, rotate_refresh_token
+from app.services.email_verification import (
+    confirm_email_verification,
+    request_email_verification,
+)
 from app.services.invites import accept_company_invite
 from app.services.password_reset import confirm_password_reset, request_password_reset
 
@@ -82,6 +88,23 @@ async def password_reset(
     payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)
 ) -> ResetCodeDelivery:
     return await request_password_reset(db, payload)
+
+
+@router.post(
+    "/email-verify", response_model=ResetCodeDelivery, status_code=status.HTTP_202_ACCEPTED
+)
+async def email_verify_request(
+    payload: EmailVerifyRequest, db: AsyncSession = Depends(get_db)
+) -> ResetCodeDelivery:
+    return await request_email_verification(db, payload)
+
+
+@router.post("/email-verify/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def email_verify_confirm(
+    payload: EmailVerifyConfirmRequest, db: AsyncSession = Depends(get_db)
+) -> Response:
+    await confirm_email_verification(db, payload)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)

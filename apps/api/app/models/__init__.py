@@ -2,6 +2,7 @@ from app.models.audit import AuditLog
 from app.models.company import Company
 from app.models.customer import Customer
 from app.models.domain_event import DomainEvent
+from app.models.email_verification import EmailVerification
 from app.models.equipment import Equipment
 from app.models.followup_task import FollowupTask
 from app.models.intake_record import IntakeRecord
@@ -21,6 +22,7 @@ __all__ = [
     "Company",
     "Customer",
     "DomainEvent",
+    "EmailVerification",
     "Equipment",
     "FollowupTask",
     "Invoice",

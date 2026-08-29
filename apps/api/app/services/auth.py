@@ -97,6 +97,8 @@ async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair:
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if settings.email_verification_required and not user.email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not verified.")
     if not user.memberships:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No company access")
     membership = user.memberships[0]

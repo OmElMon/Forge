@@ -51,6 +51,11 @@ def create_password_reset_token() -> tuple[str, str]:
     return token, fingerprint_token(token)
 
 
+def create_email_verification_token() -> tuple[str, str]:
+    token = token_urlsafe(32)
+    return token, fingerprint_token(token)
+
+
 # PIN for local/dev flows (recording email provider): 32-bit, BCrypt-hashed.
 def hash_reset_pin(pin: str) -> str:
     return password_hash.hash(pin)

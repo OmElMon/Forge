@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     account_lockout_window_seconds: int = 900
     account_lockout_duration_seconds: int = 900
 
+    email_verification_required: bool = False
+    email_verification_expire_minutes: int = 1440
+
 
 @lru_cache
 def get_settings() -> Settings:

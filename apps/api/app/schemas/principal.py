@@ -12,3 +12,4 @@ class Principal(BaseModel):
     full_name: str
     company_name: str
     role: UserRole
+    email_verified: bool = False

@@ -73,6 +73,7 @@ async def get_principal(
         full_name=user.full_name,
         company_name=company.name,
         role=role,
+        email_verified=bool(user.email_verified),
     )
 
 

@@ -26,6 +26,14 @@ class PasswordResetConfirmRequest(BaseModel):
     password: str = Field(min_length=12, max_length=128)
 
 
+class EmailVerifyRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailVerifyConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
 class ResetCodeDelivery(BaseModel):
     status: str
     channel: str
