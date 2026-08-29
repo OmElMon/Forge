@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = 30
     rate_limit_api_per_minute: int = 200
 
+    account_lockout_enabled: bool = True
+    account_lockout_max_attempts: int = 5
+    account_lockout_window_seconds: int = 900
+    account_lockout_duration_seconds: int = 900
+
 
 @lru_cache
 def get_settings() -> Settings:

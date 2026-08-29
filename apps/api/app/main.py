@@ -57,6 +57,16 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Strict-Transport-Security": "max-age=15552000; includeSubDomains",
+}
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     if not settings.rate_limiting_enabled:
@@ -102,6 +112,14 @@ async def request_log_middleware(request: Request, call_next):
         response.status_code,
         duration_ms,
     )
+    return response
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
     return response
 
 
