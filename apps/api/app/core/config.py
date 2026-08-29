@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     email_verification_required: bool = False
     email_verification_expire_minutes: int = 1440
 
+    mfa_challenge_expire_minutes: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:

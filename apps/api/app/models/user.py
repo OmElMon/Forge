@@ -9,6 +9,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.email_verification import EmailVerification
     from app.models.membership import Membership
+    from app.models.mfa_setting import MfaSetting
     from app.models.password_reset import PasswordReset
     from app.models.session import RefreshSession
 
@@ -35,5 +36,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     email_verifications: Mapped[list["EmailVerification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    mfa_settings: Mapped["MfaSetting"] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

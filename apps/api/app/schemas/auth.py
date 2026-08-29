@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -46,3 +48,39 @@ class TokenPair(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class MfaChallenge(BaseModel):
+    mfa_required: Literal[True] = True
+    mfa_session: str
+
+
+class LoginResponse(BaseModel):
+    """Response for /auth/login: either MFA is required (challenge token) or the
+    user is fully authenticated (token pair)."""
+
+    mfa_required: bool = False
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    expires_in: int | None = None
+    mfa_session: str | None = None
+
+
+class MfaEnrollResult(BaseModel):
+    secret: str
+    provisioning_uri: str
+    recovery_codes: list[str]
+
+
+class MfaConfirmRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+
+
+class MfaDisableRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=64)
+
+
+class MfaChallengeVerifyRequest(BaseModel):
+    mfa_session: str
+    code: str = Field(min_length=6, max_length=64)

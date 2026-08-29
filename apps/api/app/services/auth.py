@@ -18,9 +18,15 @@ from app.core.security import (
 from app.models.company import Company
 from app.models.enums import CompanyStatus, UserRole
 from app.models.membership import Membership
+from app.models.mfa_setting import MfaSetting
 from app.models.session import RefreshSession
 from app.models.user import User
-from app.schemas.auth import LoginRequest, SignUpRequest, TokenPair
+from app.schemas.auth import (
+    LoginRequest,
+    MfaChallenge,
+    SignUpRequest,
+    TokenPair,
+)
 
 
 def _slugify(value: str) -> str:
@@ -84,7 +90,7 @@ async def register(db: AsyncSession, payload: SignUpRequest) -> TokenPair:
     return tokens
 
 
-async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair:
+async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair | MfaChallenge:
     result = await db.execute(
         select(User)
         .where(User.email == payload.email.lower(), User.is_active.is_(True))
@@ -107,6 +113,15 @@ async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No company access")
     if company.status == CompanyStatus.SUSPENDED and membership.role != UserRole.OWNER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace suspended")
+    mfa = await db.scalar(select(MfaSetting).where(MfaSetting.user_id == user.id))
+    if mfa is not None and getattr(mfa, "confirmed", False):
+        session_token, _, _ = create_token(
+            subject=user.id,
+            company_id=membership.company_id,
+            token_type="mfa",
+            expires_delta=timedelta(minutes=settings.mfa_challenge_expire_minutes),
+        )
+        return MfaChallenge(mfa_session=session_token)
     tokens = await issue_tokens(db, user.id, membership.company_id)
     await db.commit()
     return tokens

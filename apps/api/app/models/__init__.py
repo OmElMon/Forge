@@ -11,6 +11,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
 from app.models.membership import Membership
+from app.models.mfa_setting import MfaSetting
 from app.models.password_reset import PasswordReset
 from app.models.service_address import ServiceAddress
 from app.models.session import RefreshSession
@@ -31,6 +32,7 @@ __all__ = [
     "Invite",
     "Job",
     "Membership",
+    "MfaSetting",
     "PasswordReset",
     "RefreshSession",
     "ServiceAddress",

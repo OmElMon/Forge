@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import CONFIG_ROLES, get_principal, require_roles
 from app.core.config import settings
 from app.core.lockout import LOGIN_LOCKOUT
 from app.core.ratelimit import rate_limit_key
@@ -10,6 +10,12 @@ from app.schemas.auth import (
     EmailVerifyConfirmRequest,
     EmailVerifyRequest,
     LoginRequest,
+    LoginResponse,
+    MfaChallenge,
+    MfaChallengeVerifyRequest,
+    MfaConfirmRequest,
+    MfaDisableRequest,
+    MfaEnrollResult,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RefreshRequest,
@@ -25,6 +31,12 @@ from app.services.email_verification import (
     request_email_verification,
 )
 from app.services.invites import accept_company_invite
+from app.services.mfa import (
+    confirm_mfa_enrollment,
+    disable_mfa,
+    enroll_mfa,
+    verify_mfa_challenge,
+)
 from app.services.password_reset import confirm_password_reset, request_password_reset
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -37,10 +49,10 @@ async def sign_up(payload: SignUpRequest, db: AsyncSession = Depends(get_db)) ->
     return await register(db, payload)
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=LoginResponse)
 async def login(
     payload: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)
-) -> TokenPair:
+) -> TokenPair | MfaChallenge:
     if not settings.account_lockout_enabled:
         return await authenticate(db, payload)
     email_key = f"email:{payload.email.lower()}"
@@ -54,7 +66,7 @@ async def login(
                 headers={"Retry-After": str(int(retry_after))},
             )
     try:
-        tokens = await authenticate(db, payload)
+        result = await authenticate(db, payload)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
             await LOGIN_LOCKOUT.register_failure(email_key)
@@ -62,7 +74,7 @@ async def login(
         raise
     await LOGIN_LOCKOUT.reset(email_key)
     await LOGIN_LOCKOUT.reset(ip_key)
-    return tokens
+    return result
 
 
 @router.post("/refresh", response_model=TokenPair)
@@ -120,3 +132,38 @@ async def invite_accept(
     payload: InviteAcceptRequest, db: AsyncSession = Depends(get_db)
 ) -> TokenPair:
     return await accept_company_invite(db, payload)
+
+
+@router.post("/mfa/verify", response_model=TokenPair)
+async def mfa_verify(
+    payload: MfaChallengeVerifyRequest, db: AsyncSession = Depends(get_db)
+) -> TokenPair:
+    return await verify_mfa_challenge(db, payload)
+
+
+@router.post("/mfa/enroll", response_model=MfaEnrollResult, status_code=status.HTTP_201_CREATED)
+async def mfa_enroll(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_roles(*CONFIG_ROLES)),
+) -> MfaEnrollResult:
+    return await enroll_mfa(db, principal)
+
+
+@router.post("/mfa/enroll/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def mfa_enroll_confirm(
+    payload: MfaConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_roles(*CONFIG_ROLES)),
+) -> Response:
+    await confirm_mfa_enrollment(db, principal, payload.code)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/mfa/disable", status_code=status.HTTP_204_NO_CONTENT)
+async def mfa_disable(
+    payload: MfaDisableRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_roles(*CONFIG_ROLES)),
+) -> Response:
+    await disable_mfa(db, principal, payload.code)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
