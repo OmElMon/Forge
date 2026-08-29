@@ -73,6 +73,43 @@ Order matters: database → API → frontend. Verify each stage before moving on
 - [ ] Open the app and walk one happy path (login → dashboard → a read-only list page).
 - [ ] File the deploy outcome in the session handoff.
 
+## 3. Load and concurrency testing
+
+`apps/api/scripts/load_test.py` drives a running API (`/api/v1`) with concurrent register + login + read storms and exits non-zero when the server shows weakness under concurrency. It is a dev/CI tool, not a benchmark: the point is verifying integrity under real async DB concurrency, not peak throughput.
+
+### What gets checked (hard assertions)
+
+| Check | What it catches |
+| --- | --- |
+| Zero HTTP 5xx across all storms | DB pool exhaustion, `MissingGreenlet` regressions, unhandled middleware exceptions |
+| Zero transport/connection errors | async engine/client deadlocks, dropped keep-alive connections |
+| p95 latency below `--max-p95-ms` | pathological slow queries (pool starvation makes p95 balloon) |
+| Locked-account probe returns 429 | login lockout engages after repeated failures (brute-force defense fires) |
+
+### Run it against the local stack
+
+```bash
+docker compose up -d postgres redis api
+cd apps/api
+.venv/bin/python scripts/load_test.py --concurrency 8 --duration 15
+```
+
+or from inside the API container:
+
+```bash
+docker compose run --rm api python scripts/load_test.py --base-url http://api:8000/api/v1
+```
+
+Operational notes:
+
+- **Rate limits apply.** The default per-IP caps (auth 30/min, API 200/min) mean a local run legitimately produces 429s (`throttled` in the report) — that is the throttle working, not a failure. To stress only database concurrency, raise them before booting the stack (`RATE_LIMIT_AUTH_PER_MINUTE=100000 RATE_LIMIT_API_PER_MINUTE=100000` in `.env`); the CI concurrency job does exactly this.
+- **In-memory lockout persists.** Account lockout is in-process and bans for 15 minutes, keyed partly by client IP, so a repeat run against the same still-running API will see many 429s until the window passes. Restart the API between runs (`docker compose restart api`). CI is unaffected (fresh process each run).
+- **Pure logic is unit-tested** in `apps/api/tests/test_load_harness.py`; only the async runner needs a live server.
+
+### In CI
+
+The `concurrency` job in `.github/workflows/ci.yml` bootstraps real Postgres and Redis service containers, applies `alembic upgrade head` against them (validating migrations on a real engine), boots uvicorn, and runs the harness with `--concurrency 8 --duration 12 --max-p95-ms 2500`. This is the only job that exercises the async DB sessions, rate limiter, and lockout end-to-end; the unit suite uses fakes.
+
 ## 4. Data durability
 
 ### Backup cadence

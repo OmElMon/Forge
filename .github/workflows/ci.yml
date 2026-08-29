@@ -44,3 +44,69 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+
+  concurrency:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: forge
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U forge -d forge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ".[dev]"
+      - name: Apply migrations to a real Postgres
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://forge:forge@127.0.0.1:5432/forge
+          ENVIRONMENT: development
+      - name: Start API
+        run: |
+          env \
+            DATABASE_URL=postgresql+asyncpg://forge:forge@127.0.0.1:5432/forge \
+            ENVIRONMENT=development \
+            RATE_LIMIT_API_PER_MINUTE=100000 \
+            RATE_LIMIT_AUTH_PER_MINUTE=100000 \
+            uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          echo $! > /tmp/uvicorn.pid
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/api/v1/ready > /dev/null 2>&1; then
+              echo "API ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API never became ready; uvicorn log:" >&2
+          cat /tmp/uvicorn.log >&2
+          exit 1
+      - name: Run load/concurrency harness
+        run: python scripts/load_test.py --concurrency 8 --duration 12 --max-p95-ms 2500
