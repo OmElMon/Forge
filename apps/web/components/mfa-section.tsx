@@ -7,6 +7,7 @@ import {
   ExternalLink,
   KeyRound,
   LoaderCircle,
+  RotateCcw,
   ShieldCheck,
   ShieldOff,
 } from "lucide-react";
@@ -73,7 +74,7 @@ export function MfaSection() {
     };
   }, []);
 
-  async function startSetup() {
+  async function startSetup(refreshStatus = false) {
     setEnrolling(true);
     setError("");
     try {
@@ -88,6 +89,11 @@ export function MfaSection() {
         return;
       }
       setEnroll(payload as EnrollResult);
+      if (refreshStatus) {
+        const statusResponse = await fetch("/api/auth/mfa/status", { cache: "no-store" });
+        const statusPayload = await readApiResponse(statusResponse);
+        if (statusResponse.ok) setStatus(statusPayload as MfaStatus);
+      }
     } catch {
       setError("CrewPilot OS could not start two-factor setup.");
     } finally {
@@ -216,16 +222,26 @@ export function MfaSection() {
                     </button>
                   </form>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDisablePrompt(true);
-                      setError("");
-                    }}
-                    className="inline-flex h-10 items-center rounded-lg border bg-white px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50"
-                  >
-                    Disable two-factor authentication
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={enrolling}
+                      onClick={() => startSetup(true)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {enrolling ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} Reconfigure
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDisablePrompt(true);
+                        setError("");
+                      }}
+                      className="inline-flex h-10 items-center rounded-lg border bg-white px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+                    >
+                      Disable two-factor authentication
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -337,7 +353,7 @@ export function MfaSection() {
               <button
                 type="button"
                 disabled={enrolling}
-                onClick={startSetup}
+                onClick={() => startSetup()}
                 className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {enrolling ? <LoaderCircle className="size-4 animate-spin" /> : <><ShieldCheck className="size-4" /> Set up</>}

@@ -1,11 +1,13 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/logo";
+
+const SESSION_KEY = "crewpilot.mfa_session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +16,21 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<{ mfa_session: string } | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
+
+  useEffect(() => {
+    const held = sessionStorage.getItem(SESSION_KEY);
+    if (held) setChallenge({ mfa_session: held });
+  }, []);
+
+  function startChallenge(mfaSession: string) {
+    sessionStorage.setItem(SESSION_KEY, mfaSession);
+    setChallenge({ mfa_session: mfaSession });
+  }
+
+  function clearChallenge() {
+    sessionStorage.removeItem(SESSION_KEY);
+    setChallenge(null);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,7 +54,7 @@ export default function LoginPage() {
         return;
       }
       if (payload.mfa_required && payload.mfa_session) {
-        setChallenge({ mfa_session: payload.mfa_session });
+        startChallenge(payload.mfa_session);
         return;
       }
       router.replace("/dashboard");
@@ -67,6 +84,7 @@ export default function LoginPage() {
         setError(payload.error ?? "That code didn’t verify. Try again.");
         return;
       }
+      sessionStorage.removeItem(SESSION_KEY);
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -128,7 +146,7 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setChallenge(null)}
+                  onClick={clearChallenge}
                   className="w-full text-center text-sm font-medium text-gray-500 hover:text-gray-700"
                 >
                   Use a different account
