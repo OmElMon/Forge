@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import BACK_OFFICE_ROLES, CONFIG_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.enums import FollowupTaskStatus
 from app.models.followup_task import FollowupTask
@@ -83,7 +83,7 @@ async def update_followup_policy(
     rule_type: str,
     payload: FollowupPolicyUpdate = Body(...),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*CONFIG_ROLES)),
 ) -> FollowupPolicyRead:
     if rule_by_type(rule_type) is None:
         raise HTTPException(
@@ -107,7 +107,7 @@ async def update_followup_policy(
 async def resolve_followup_endpoint(
     followup_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> FollowupTask:
     result = await db.execute(
         select(FollowupTask).where(

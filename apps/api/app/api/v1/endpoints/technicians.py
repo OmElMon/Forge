@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import OPERATIONS_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.enums import DomainAggregateType, DomainEventType
 from app.models.job import Job
@@ -66,7 +66,7 @@ async def list_technicians(
 async def create_technician(
     payload: TechnicianCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Technician:
     technician = Technician(company_id=principal.company_id, **payload.model_dump())
     db.add(technician)
@@ -118,7 +118,7 @@ async def update_technician(
     technician_id: UUID,
     payload: TechnicianUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Technician:
     technician = await get_company_technician(technician_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)

@@ -17,6 +17,17 @@ from app.schemas.principal import Principal
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
+# Finer per-slice RBAC groups. Read access stays open to every authenticated role;
+# mutations are gated to the roles that own that slice of the workflow.
+BACK_OFFICE_ROLES = (UserRole.OWNER, UserRole.ADMIN, UserRole.OFFICE_STAFF)
+OPERATIONS_ROLES = (
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.DISPATCHER,
+    UserRole.OFFICE_STAFF,
+)
+CONFIG_ROLES = (UserRole.OWNER, UserRole.ADMIN)
+
 
 async def get_principal(
     token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)

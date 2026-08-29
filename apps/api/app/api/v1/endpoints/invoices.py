@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import BACK_OFFICE_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.enums import (
@@ -214,7 +214,7 @@ async def list_invoices(
 async def create_invoice(
     payload: InvoiceCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Invoice:
     await ensure_company_customer(payload.customer_id, db, principal)
     if payload.job_id is not None:
@@ -257,7 +257,7 @@ async def update_invoice(
     invoice_id: UUID,
     payload: InvoiceUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Invoice:
     invoice = await get_company_invoice(invoice_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -309,7 +309,7 @@ async def update_invoice(
 async def send_invoice(
     invoice_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Invoice:
     invoice = await get_company_invoice(invoice_id, db, principal)
     ensure_invoice_transition(
@@ -344,7 +344,7 @@ async def send_invoice(
 async def approve_estimate(
     invoice_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Invoice:
     invoice = await get_company_invoice(invoice_id, db, principal)
     ensure_invoice_transition(
@@ -379,7 +379,7 @@ async def approve_estimate(
 async def mark_invoice_paid(
     invoice_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Invoice:
     invoice = await get_company_invoice(invoice_id, db, principal)
     ensure_invoice_transition(
@@ -414,7 +414,7 @@ async def mark_invoice_paid(
 async def convert_estimate_to_invoice(
     invoice_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> dict[str, Invoice]:
     estimate = await get_company_invoice(invoice_id, db, principal)
     ensure_invoice_transition(
@@ -508,7 +508,7 @@ async def create_invoice_line_item(
     invoice_id: UUID,
     payload: InvoiceLineItemCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> InvoiceLineItem:
     await get_company_invoice(invoice_id, db, principal)
     line_item = InvoiceLineItem(invoice_id=invoice_id, **payload.model_dump())
@@ -552,7 +552,7 @@ async def update_invoice_line_item(
     line_item_id: UUID,
     payload: InvoiceLineItemUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> InvoiceLineItem:
     line_item = await get_company_line_item(line_item_id, invoice_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -594,7 +594,7 @@ async def delete_invoice_line_item(
     invoice_id: UUID,
     line_item_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> None:
     line_item = await get_company_line_item(line_item_id, invoice_id, db, principal)
     await db.delete(line_item)

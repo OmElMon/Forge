@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import OPERATIONS_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.enums import DomainAggregateType, DomainEventType, JobStatus
@@ -109,7 +109,7 @@ async def list_jobs(
 async def create_job(
     payload: JobCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     await ensure_company_customer(payload.customer_id, db, principal)
     data = payload.model_dump()
@@ -155,7 +155,7 @@ async def update_job(
     job_id: UUID,
     payload: JobUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -195,7 +195,7 @@ async def schedule_job(
     job_id: UUID,
     payload: JobSchedule,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     ensure_job_transition(
@@ -235,7 +235,7 @@ async def assign_job(
     job_id: UUID,
     payload: JobAssignment,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     ensure_job_transition(
@@ -271,7 +271,7 @@ async def assign_job(
 async def start_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     ensure_job_transition(
@@ -305,7 +305,7 @@ async def start_job(
 async def complete_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     ensure_job_transition(
@@ -339,7 +339,7 @@ async def complete_job(
 async def cancel_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*OPERATIONS_ROLES)),
 ) -> Job:
     job = await get_company_job(job_id, db, principal)
     ensure_job_transition(

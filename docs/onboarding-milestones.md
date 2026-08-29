@@ -182,14 +182,14 @@ Needed slices:
 
 - done: timezone-aware company profiles (multiregion/market polish start);
 - done: organization/team lifecycle basics — invitations with roles, memberships, and owner-only suspension/reactivation;
-- partial: stronger RBAC — invitations and settings enforce roles; finer per-slice checks should be added per slice as it ships;
+- done: finer per-slice RBAC — mutation endpoints are gated by workflow role groups (`require_roles` in `app/api/deps.py`): revenue/front-office mutations (customers + addresses + equipment + CSV import, intake create/update/convert, invoices + line items + all invoice lifecycle steps, follow-up resolution) allow owner/admin/office_staff; operations/dispatch mutations (jobs create/update/schedule/assign/start/complete/cancel, technicians create/update) allow owner/admin/dispatcher/office_staff; config mutations (follow-up procedure rules, company profile) allow owner/admin; reads stay open to every authenticated role, and technicians remain read-only in the dashboard;
 - partial: provider abstraction hardening — clean port/adapter boundaries exist and stay no-op until providers are activated;
 - partial: documentation and support workflows — `docs/operations.md` covers smoke, deploy, and recovery; expand as operational lessons land;
 - partial: analytics for activation and retention — revenue/conversion/capacity analytics exist; activation funnel scripting is a product decision;
 - done: durable shared rate limiting — `rate_limiter_backend` selects a Redis-backed `RedisFixedWindowLimiter` (shared counters across instances via atomic INCR + EXPIRE, fail-open on store errors, same 429/`Retry-After` contract), defaulting to in-process `memory` until more than one API instance runs;
 - pending: production-grade worker queueing capacity verification (the follow-up sweep is already dedupe-safe across workers via `unique_key` + `delivered_at`; prove capacity once scaling infra is chosen);
 - pending: load and concurrency testing once scaling infra is chosen;
-- done: onboarding/import tools — customer CSV import (`POST /customers/import`, template at `GET /customers/import/template`) with row-level validation, per-row error reporting, in-file duplicate email/phone skipping, and event/audit coverage; a web upload UI on the Customers page is the follow-up when frontend credits are available;
+- done: onboarding/import tools — customer CSV import (`POST /customers/import`, template at `GET /customers/import/template`) with row-level validation, per-row error reporting, in-file duplicate email/phone skipping, and event/audit coverage; the Customers dashboard page now has an upload card (file picker, template download, per-row error report, list refresh after import);
 - pending: security review with a human reviewer (automated tests already cover auth, tokens, tenant scoping, and audit).
 
 Acceptance criteria:

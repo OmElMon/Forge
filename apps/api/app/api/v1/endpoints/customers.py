@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import BACK_OFFICE_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.enums import CustomerStatus, DomainAggregateType, DomainEventType
@@ -127,7 +127,7 @@ async def list_customers(
 async def create_customer(
     payload: CustomerCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Customer:
     customer = Customer(company_id=principal.company_id, **payload.model_dump())
     db.add(customer)
@@ -158,7 +158,7 @@ async def customer_import_template() -> Response:
 async def import_customers(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> CustomerImportResult:
     try:
         content = (await file.read()).decode("utf-8-sig")
@@ -221,7 +221,7 @@ async def update_customer(
     customer_id: UUID,
     payload: CustomerUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Customer:
     customer = await get_company_customer(customer_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -278,7 +278,7 @@ async def create_service_address(
     customer_id: UUID,
     payload: ServiceAddressCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> ServiceAddress:
     await get_company_customer(customer_id, db, principal)
     address = ServiceAddress(
@@ -315,7 +315,7 @@ async def update_service_address(
     address_id: UUID,
     payload: ServiceAddressUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> ServiceAddress:
     address = await get_company_address(address_id, customer_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -355,7 +355,7 @@ async def delete_service_address(
     customer_id: UUID,
     address_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> None:
     address = await get_company_address(address_id, customer_id, db, principal)
     await db.delete(address)
@@ -405,7 +405,7 @@ async def create_customer_equipment(
     customer_id: UUID,
     payload: EquipmentCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Equipment:
     await get_company_customer(customer_id, db, principal)
     equipment = Equipment(
@@ -442,7 +442,7 @@ async def update_customer_equipment(
     equipment_id: UUID,
     payload: EquipmentUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> Equipment:
     equipment = await get_company_equipment(equipment_id, customer_id, db, principal)
     updates = payload.model_dump(exclude_unset=True)
@@ -482,7 +482,7 @@ async def delete_customer_equipment(
     customer_id: UUID,
     equipment_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> None:
     equipment = await get_company_equipment(equipment_id, customer_id, db, principal)
     await db.delete(equipment)

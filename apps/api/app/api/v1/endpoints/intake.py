@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_principal
+from app.api.deps import BACK_OFFICE_ROLES, get_principal, require_roles
 from app.db.session import get_db
 from app.models.enums import (
     DomainAggregateType,
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/intake", tags=["intake"])
 async def create_intake_record(
     payload: IntakeRecordCreate = Body(...),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> IntakeRecord:
     record = IntakeRecord(company_id=principal.company_id, **payload.model_dump())
     db.add(record)
@@ -79,7 +79,7 @@ async def update_intake_record(
     record_id: UUID,
     payload: IntakeRecordUpdate = Body(...),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> IntakeRecord:
     record = await get_company_intake_record(record_id, db, principal)
     if record is None:
@@ -117,7 +117,7 @@ async def update_intake_record(
 async def convert_intake_record_endpoint(
     record_id: UUID,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
 ) -> CustomerRead:
     record = await get_company_intake_record(record_id, db, principal)
     if record is None:
