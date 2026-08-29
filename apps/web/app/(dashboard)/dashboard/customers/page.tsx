@@ -6,6 +6,7 @@ import {
   BriefcaseBusiness,
   CalendarClock,
   CircleDollarSign,
+  Download,
   FileText,
   LoaderCircle,
   Mail,
@@ -14,6 +15,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Upload,
   UserRound,
   Wrench,
 } from "lucide-react";
@@ -99,6 +101,14 @@ type CustomerDetail = Customer & {
   open_invoice_cents: number;
   service_addresses: ServiceAddress[];
   equipment: Equipment[];
+};
+
+type ImportRowError = { row: number; field: string; message: string };
+
+type ImportResult = {
+  created: number;
+  skipped_rows: number;
+  errors: ImportRowError[];
 };
 
 const statusStyles: Record<CustomerStatus, string> = {
@@ -225,6 +235,9 @@ export default function CustomersPage() {
   const [updating, setUpdating] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
   const [equipmentSaving, setEquipmentSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | CustomerStatus>("");
@@ -506,6 +519,40 @@ export default function CustomersPage() {
       await loadDetail(selectedCustomer.id);
     } catch {
       setError("CrewPilot OS could not remove this equipment.");
+    }
+  }
+
+  async function runImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!importFile) return;
+
+    setImporting(true);
+    setError("");
+    setImportResult(null);
+    const body = new FormData();
+    body.append("file", importFile);
+
+    try {
+      const response = await fetch("/api/customers/import", {
+        body,
+        method: "POST",
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) {
+        setError(errorMessage(result, `Unable to import customers. Status ${response.status}.`));
+        return;
+      }
+      const summary = result as ImportResult;
+      setImportResult(summary);
+      event.currentTarget.reset();
+      setImportFile(null);
+      if (summary.created > 0) {
+        await loadCustomers();
+      }
+    } catch {
+      setError("CrewPilot OS could not process this import.");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -896,6 +943,66 @@ export default function CustomersPage() {
             <button disabled={saving} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
               {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
               Save customer
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border bg-white p-5 shadow-panel">
+          <div className="flex items-center gap-2">
+            <span className="grid size-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
+              <Upload className="size-5" />
+            </span>
+            <div>
+              <h2 className="font-semibold">Import customers</h2>
+              <p className="text-xs text-gray-500">Bulk-load records from a CSV file.</p>
+            </div>
+          </div>
+
+          {importResult && (
+            <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+              Imported {importResult.created} customer{importResult.created === 1 ? "" : "s"}
+              {importResult.skipped_rows > 0
+                ? ` · ${importResult.skipped_rows} row${importResult.skipped_rows === 1 ? "" : "s"} skipped`
+                : ""}
+              .
+            </p>
+          )}
+
+          {importResult && importResult.errors.length > 0 && (
+            <div className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
+              {importResult.errors.map((item, index) => (
+                <p key={`${item.row}-${item.field}-${index}`}>
+                  <span className="font-semibold">Row {item.row}</span> ({item.field}): {item.message}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <form onSubmit={runImport} className="mt-5 space-y-4">
+            <label className="block text-sm font-medium">
+              CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                className="mt-2 block w-full cursor-pointer rounded-lg border text-sm text-gray-600 file:mr-3 file:h-10 file:border-0 file:bg-gray-950 file:px-4 file:text-sm file:font-semibold file:text-white hover:file:bg-gray-800"
+              />
+            </label>
+            <div className="flex items-center gap-2">
+              <a
+                href="/api/customers/import/template"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700"
+              >
+                <Download className="size-3.5" />
+                Download CSV template
+              </a>
+            </div>
+            <button
+              disabled={importing || !importFile}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importing ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              Import file
             </button>
           </form>
         </section>
