@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.models.service_address import ServiceAddress
 from app.schemas.customer import (
     CustomerCreate,
     CustomerDetail,
+    CustomerImportResult,
     CustomerRead,
     CustomerUpdate,
 )
@@ -26,6 +27,11 @@ from app.schemas.service_address import (
     ServiceAddressUpdate,
 )
 from app.services.audit import record_audit_event
+from app.services.customer_import import (
+    CUSTOMER_CSV_TEMPLATE,
+    materialize_customer_import,
+    parse_customer_rows,
+)
 from app.services.customer_profile import build_customer_detail, filter_customers
 from app.services.events import emit_domain_event
 
@@ -137,6 +143,33 @@ async def create_customer(
     await db.commit()
     await db.refresh(customer)
     return customer
+
+
+@router.get("/import/template")
+async def customer_import_template() -> Response:
+    return Response(
+        content=f"{CUSTOMER_CSV_TEMPLATE}\n",
+        headers={"Content-Disposition": 'attachment; filename="customers-template.csv"'},
+        media_type="text/csv",
+    )
+
+
+@router.post("/import", response_model=CustomerImportResult)
+async def import_customers(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> CustomerImportResult:
+    try:
+        content = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file must be a UTF-8 CSV.",
+        ) from None
+    rows, errors = parse_customer_rows(content)
+    created = await materialize_customer_import(rows, db, principal)
+    return CustomerImportResult(created=created, skipped_rows=len(errors), errors=errors)
 
 
 @router.get("/{customer_id}", response_model=CustomerDetail)

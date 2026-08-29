@@ -189,7 +189,7 @@ Needed slices:
 - done: durable shared rate limiting — `rate_limiter_backend` selects a Redis-backed `RedisFixedWindowLimiter` (shared counters across instances via atomic INCR + EXPIRE, fail-open on store errors, same 429/`Retry-After` contract), defaulting to in-process `memory` until more than one API instance runs;
 - pending: production-grade worker queueing capacity verification (the follow-up sweep is already dedupe-safe across workers via `unique_key` + `delivered_at`; prove capacity once scaling infra is chosen);
 - pending: load and concurrency testing once scaling infra is chosen;
-- pending: onboarding/import tools (customer CSV import is the obvious first wedge);
+- done: onboarding/import tools — customer CSV import (`POST /customers/import`, template at `GET /customers/import/template`) with row-level validation, per-row error reporting, in-file duplicate email/phone skipping, and event/audit coverage; a web upload UI on the Customers page is the follow-up when frontend credits are available;
 - pending: security review with a human reviewer (automated tests already cover auth, tokens, tenant scoping, and audit).
 
 Acceptance criteria:

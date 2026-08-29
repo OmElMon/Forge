@@ -57,3 +57,15 @@ class CustomerDetail(CustomerRead):
     open_invoice_cents: int
     service_addresses: list[ServiceAddressRead]
     equipment: list[EquipmentRead]
+
+
+class CustomerImportRowError(BaseModel):
+    row: int
+    field: str
+    message: str
+
+
+class CustomerImportResult(BaseModel):
+    created: int
+    skipped_rows: int
+    errors: list[CustomerImportRowError]
