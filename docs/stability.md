@@ -21,7 +21,7 @@ Before chasing product bugs, verify the platform assumptions:
 4. Render `CORS_ORIGINS` includes the exact Netlify frontend URL.
 5. Netlify `API_INTERNAL_URL` points to the Render API `/api/v1` URL.
 6. Alembic migrations completed during the latest Render deploy.
-7. Rate limiting is active behind the proxy: auth endpoints cap at 30 req/min/IP and the general API at 200 req/min/IP (`rate_limit_auth_per_minute`, `rate_limit_api_per_minute`). Health/status/ready are exempt; a single API instance keeps counters in-process.
+7. Rate limiting is active behind the proxy: auth endpoints cap at 30 req/min/IP and the general API at 200 req/min/IP (`rate_limit_auth_per_minute`, `rate_limit_api_per_minute`). Health/status/ready are exempt. A single API instance keeps counters in-process (`rate_limiter_backend=memory`, the default); set `RATE_LIMITER_BACKEND=redis` once more than one API instance runs so counters live in the shared `REDIS_URL` store. The Redis backend fails open on store errors so throttling never takes the API down.
 8. Backups: Supabase provides native point-in-time backups; `apps/api/scripts/backup_db.sh` (or `make db-backup`) takes a complementary logical `pg_dump` copy. Run it on a schedule off-platform and verify archives restore cleanly.
 
 ## Production status surface

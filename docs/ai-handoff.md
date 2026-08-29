@@ -3,7 +3,7 @@
 This is the first file an AI coding assistant should read before continuing CrewPilot OS.
 It is intentionally repo-safe: do not add secrets, private credentials, customer data, or sensitive market strategy here.
 
-Last updated: 2026-08-28.
+Last updated: 2026-08-29.
 
 ## Product in one sentence
 
@@ -78,7 +78,7 @@ Backend:
 - JWT access tokens and rotating refresh sessions.
 - Tenant-scoped users, companies, memberships, customers, jobs, technicians, invoices, invoice line items, audit logs.
 - Alembic migrations through `20260827_0016`.
-- Rate limiting (in-process, keyed by client IP via `X-Forwarded-For`): auth endpoints capped at `rate_limit_auth_per_minute` (default 30/min) and the general API at `rate_limit_api_per_minute` (default 200/min), returning 429 + `Retry-After`. Health/ready/status/openapi/docs/root are exempt. Toggle with `rate_limiting_enabled`; counters are per-process (swap for a shared store when scaling beyond one API instance).
+- Rate limiting keyed by client IP via `X-Forwarded-For`: auth endpoints capped at `rate_limit_auth_per_minute` (default 30/min) and the general API at `rate_limit_api_per_minute` (default 200/min), returning 429 + `Retry-After`. Health/ready/status/openapi/docs/root are exempt. Toggle with `rate_limiting_enabled`; backend selectable with `rate_limiter_backend` — `memory` (default, in-process `FixedWindowLimiter`) for single-instance, or `redis` (`RedisFixedWindowLimiter`, atomic INCR against window-slot keys over the shared `REDIS_URL`) once the API scales beyond one instance; the Redis limiter fails open on store errors so throttling never takes the API down.
 - Integration-ready adapter boundaries (no live providers): ports in `app/services/integrations.py` (messaging/voice/payments/accounting), disabled-by-default adapter stubs in `app/integrations/`, env-gated via `settings.*_provider`, per-adapter event contracts in `docs/integration-contracts.md`. Activation is manual-only (user owns provider accounts/webhooks).
 - Row-level security enabled on application tables as defense in depth.
 - Job workflows: schedule, assign, start, complete, cancel.
@@ -202,6 +202,7 @@ The production monitoring pass is complete: `docs/operations.md` is the ops runb
 5. Real messaging adapter wiring — the user activates a provider account and sets `messaging_provider=...`; the port, `sms_opt_in` consent path, and delivery are ready, and the follow-up policy surface can double as the settings UI for toggling rules.
 6. Error reporting wiring — implement the `docs/operations.md` plan (sentry-sdk + @sentry/nextjs behind an empty-DSN no-op) once a DSN exists; everything else in the plan is ready to follow.
 7. Durability drill — run one Supabase restore drill per `docs/operations.md` §4 (quarterly, founder-owned), then the backup story is non-theoretical.
+8. Durable shared rate limiting — done: `rate_limiter_backend` (`memory` | `redis`) selects a Redis-backed `RedisFixedWindowLimiter` for the shared store (atomic INCR against window-slot keys, EXPIRE, same 429 + `Retry-After` contract, fails open if the store errors so throttling never downs the API). Default stays in-process `memory`; flip `RATE_LIMITER_BACKEND=redis` when the API runs more than one instance. Remaining Level 5 scaling item is load/concurrency testing plus worker-queue capacity verification.
 
 Avoid jumping straight to “AI voice agent” implementation until the event model and workflow rules are stable. The assistant layer should automate solid workflows, not compensate for missing domain structure.
 

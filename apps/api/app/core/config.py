@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     accounting_provider: str = "disabled"
 
     rate_limiting_enabled: bool = True
+    rate_limiter_backend: Literal["memory", "redis"] = "memory"
     rate_limit_auth_per_minute: int = 30
     rate_limit_api_per_minute: int = 200
 

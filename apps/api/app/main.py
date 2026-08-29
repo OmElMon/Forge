@@ -11,15 +11,15 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.ratelimit import FixedWindowLimiter, rate_limit_key
+from app.core.ratelimit import build_limiter, rate_limit_key
 
 logger = logging.getLogger("app.request")
 
 REQUEST_ID_HEADER = "x-request-id"
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
-AUTH_RATE_LIMITER = FixedWindowLimiter(settings.rate_limit_auth_per_minute)
-API_RATE_LIMITER = FixedWindowLimiter(settings.rate_limit_api_per_minute)
+AUTH_RATE_LIMITER = build_limiter(settings.rate_limit_auth_per_minute)
+API_RATE_LIMITER = build_limiter(settings.rate_limit_api_per_minute)
 
 SYSTEM_PREFIXES = (
     f"{settings.api_v1_prefix}/health",
@@ -65,7 +65,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if is_system_path(path):
         return await call_next(request)
     limiter = AUTH_RATE_LIMITER if path.startswith(AUTH_PREFIX) else API_RATE_LIMITER
-    allowed, retry_after = limiter.allow(rate_limit_key(request))
+    allowed, retry_after = await limiter.allow(rate_limit_key(request))
     if not allowed:
         return JSONResponse(
             status_code=429,

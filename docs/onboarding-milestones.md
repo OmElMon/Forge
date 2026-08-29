@@ -186,7 +186,8 @@ Needed slices:
 - partial: provider abstraction hardening — clean port/adapter boundaries exist and stay no-op until providers are activated;
 - partial: documentation and support workflows — `docs/operations.md` covers smoke, deploy, and recovery; expand as operational lessons land;
 - partial: analytics for activation and retention — revenue/conversion/capacity analytics exist; activation funnel scripting is a product decision;
-- pending: durable shared rate limiting and production-grade worker queueing (move `FixedWindowLimiter` to Redis; scale the follow-up sweep across workers);
+- done: durable shared rate limiting — `rate_limiter_backend` selects a Redis-backed `RedisFixedWindowLimiter` (shared counters across instances via atomic INCR + EXPIRE, fail-open on store errors, same 429/`Retry-After` contract), defaulting to in-process `memory` until more than one API instance runs;
+- pending: production-grade worker queueing capacity verification (the follow-up sweep is already dedupe-safe across workers via `unique_key` + `delivered_at`; prove capacity once scaling infra is chosen);
 - pending: load and concurrency testing once scaling infra is chosen;
 - pending: onboarding/import tools (customer CSV import is the obvious first wedge);
 - pending: security review with a human reviewer (automated tests already cover auth, tokens, tenant scoping, and audit).
