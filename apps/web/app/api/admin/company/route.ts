@@ -1,0 +1,25 @@
+import { type NextRequest, NextResponse } from "next/server";
+
+import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+
+export async function GET(request: NextRequest) {
+  const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  if (!accessToken) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  try {
+    const upstream = await fetch(apiUrl("/admin/company"), {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!upstream.ok) {
+      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
+    }
+    return NextResponse.json(await upstream.json());
+  } catch {
+    return NextResponse.json({ error: "Unable to reach the workspace service." }, { status: 503 });
+  }
+}

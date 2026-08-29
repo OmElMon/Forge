@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import Select, Text, cast, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import AuditLog
@@ -38,3 +39,34 @@ def record_audit_event(
     )
     db.add(audit_log)
     return audit_log
+
+
+def apply_audit_filters(
+    query: Select,
+    *,
+    company_id: UUID,
+    action: str | None = None,
+    resource_type: str | None = None,
+    resource_id: UUID | None = None,
+    actor_user_id: UUID | None = None,
+    q: str | None = None,
+) -> Select:
+    """Scope an audit-log query to a tenant and apply optional search filters."""
+    query = query.where(AuditLog.company_id == company_id)
+    if action is not None:
+        query = query.where(AuditLog.action == action)
+    if resource_type is not None:
+        query = query.where(AuditLog.resource_type == resource_type)
+    if resource_id is not None:
+        query = query.where(AuditLog.resource_id == resource_id)
+    if actor_user_id is not None:
+        query = query.where(AuditLog.actor_user_id == actor_user_id)
+    if q:
+        query = query.where(
+            or_(
+                AuditLog.action.ilike(f"%{q}%"),
+                AuditLog.resource_type.ilike(f"%{q}%"),
+                cast(AuditLog.context, Text).ilike(f"%{q}%"),
+            )
+        )
+    return query

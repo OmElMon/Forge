@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, String
+from sqlalchemy import Enum, String, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -25,6 +26,20 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     timezone: Mapped[str] = mapped_column(String(64), default="America/New_York", nullable=False)
+    service_area: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    default_trade: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    notification_prefs: Mapped[dict[str, bool]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    billing_status: Mapped[str] = mapped_column(
+        String(32),
+        default="free",
+        server_default="free",
+        nullable=False,
+    )
 
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"

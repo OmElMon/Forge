@@ -16,7 +16,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.company import Company
-from app.models.enums import UserRole
+from app.models.enums import CompanyStatus, UserRole
 from app.models.membership import Membership
 from app.models.session import RefreshSession
 from app.models.user import User
@@ -99,7 +99,13 @@ async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair:
         )
     if not user.memberships:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No company access")
-    tokens = await issue_tokens(db, user.id, user.memberships[0].company_id)
+    membership = user.memberships[0]
+    company = await db.scalar(select(Company).where(Company.id == membership.company_id))
+    if company is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No company access")
+    if company.status == CompanyStatus.SUSPENDED and membership.role != UserRole.OWNER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace suspended")
+    tokens = await issue_tokens(db, user.id, membership.company_id)
     await db.commit()
     return tokens
 

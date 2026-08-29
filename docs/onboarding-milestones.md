@@ -73,7 +73,7 @@ Acceptance criteria:
 
 ### Level 2 — Friendly tester onboarding
 
-Status: next major target.
+Status: complete.
 
 Goal: invite a small number of friendly testers without risky or confusing account behavior.
 
@@ -84,7 +84,7 @@ Needed slices:
    - done: dashboard checklist card.
 
 2. Invite/team basics
-   - done: invite team member, assign role, resend/cancel invite, tenant-safe membership creation (see slice 5 below).
+   - done: invite team member, assign role, resend/cancel invite, tenant-safe membership creation.
 
 3. Account recovery basics
    - done: password reset request + single-use reset token lifecycle with expiry and one-time use;
@@ -96,10 +96,10 @@ Needed slices:
    - done: post-deploy checklist at `docs/operations.md`.
 
 5. Demo/tester guardrails
-   - test-data labeling;
-   - simple company settings;
-   - no accidental cross-tenant reads;
-   - no production seed unless explicitly allowed.
+   - done: workspace settings (company profile, service area, timezone, default trade, notification preferences);
+   - done: no accidental cross-tenant reads — every list/detail endpoint filters `company_id == principal.company_id` on top of row-level security, with new tests for tenant-scoped principals, audit search, and workspace access;
+   - done: no production seed — demo data comes only from the local-only `apps/api/app/scripts/seed_demo.py` script;
+   - note: a visible "demo workspace" label is a product choice the founder should make once real tester accounts exist.
 
 Acceptance criteria:
 
@@ -111,42 +111,36 @@ Acceptance criteria:
 
 ### Level 3 — Pilot-business onboarding
 
-Status: not ready yet.
+Status: nearly ready — the code side ships; remaining items are founder-owned accounts (messaging provider, Sentry DSN, Supabase backup drill), not software.
 
 Goal: onboard a real small service business where the app can handle light operational use.
 
 Needed slices:
 
 1. Business setup
-   - company profile;
-   - service area;
-   - timezone;
-   - default trade/vertical;
-   - basic notification preferences.
+   - done: company profile + workspace settings — name, timezone, service area, default trade/vertical, and notification preferences (`GET/PATCH /companies/me`, dashboard Settings page);
+   - done: owner/admin can edit; other roles read-only.
 
 2. Data durability
-   - backup restore test;
-   - documented backup cadence;
-   - migration rollback posture;
-   - production database pause/availability notes.
+   - done: documented backup cadence, migration rollback posture, and Supabase pause/availability notes at `docs/operations.md`;
+   - pending: restore drill in the real Supabase project (founder-owned, one manual run) plus a documented cadence to repeat it.
 
 3. Monitoring and errors
-   - centralized error reporting;
-   - request correlation IDs surfaced in logs;
-   - production smoke workflow documented and runnable;
-   - uptime check or external monitor.
+   - done: request correlation IDs — every response carries `X-Request-ID` (reuses inbound values) and each access line logs `request_id=` alongside method/path/status/duration;
+   - done: production smoke workflow documented and runnable (`.github/workflows/production-smoke.yml`, docs at `docs/operations.md`);
+   - pending: centralized error reporting — wired per the phased plan in `docs/operations.md`, no-op until a real Sentry DSN is provided;
+   - pending: uptime check or external monitor — pick an external service and point it at `/api/v1/ready` (or add a scheduled smoke trigger).
 
 4. Provider activation
-   - real messaging provider adapter;
-   - provider webhook validation;
-   - opt-in/consent handling for SMS;
-   - disabled-by-default safety.
+   - pending: real messaging adapter — the delivery port, `sms_opt_in` consent flag, and disabled-by-default behavior are in place; activating a provider account and setting `messaging_provider=...` is founder-owned;
+   - pending: provider webhook validation once the provider is chosen;
+   - done: disabled-by-default safety (no accidental sends until a provider is configured) and opt-in/consent handling in `followup_recipient`.
 
 5. Workflow reliability
-   - follow-up delivery idempotency;
-   - job-to-invoice loop tested through API and UI;
-   - intake-to-customer-to-job loop tested through API and UI;
-   - audit trail covers important business actions.
+   - done: follow-up delivery idempotency (single `delivered_at` watermark + partial-unique `unique_key`) with tests that prove no double-delivery/no duplicate materialization;
+   - done: job → invoice loop covered through API tests (invoice transition events, follow-up auto-resolution) and the invoices UI;
+   - done: intake → customer → job loop covered through API tests and the intake UI (convert + job handoff);
+   - done: audit trail covers core business actions (auth, invites, invoices, customers, company settings, admin suspension).
 
 Acceptance criteria:
 
@@ -157,21 +151,20 @@ Acceptance criteria:
 
 ### Level 4 — Paid pilot / early revenue
 
-Status: future.
+Status: buildable code is in place for the support surface; charging money is gated on the founder connecting Stripe and on legal review.
 
 Goal: charge a limited number of businesses for one focused workflow, not a broad all-in-one platform.
 
 Needed slices:
 
-- billing foundation with Stripe or equivalent;
-- plan/subscription model;
-- billing status on company/account;
-- failed payment handling;
-- owner-only admin/support surface;
-- audit/event search;
-- safe account suspension path;
-- one strong vertical workflow with measurable ROI;
-- real privacy/terms/data-deletion posture.
+- done: billing status stored on the company (`billing_status` column, default `free`) and surfaced in the owner-only admin card;
+- done: owner-only admin/support surface (`GET /admin/company` overview with member/invite/audit counts, `PATCH /admin/company/status`);
+- done: safe account suspension path — suspended workspaces block member logins and every member request (owner can still sign in to reactivate); full audit trail;
+- done: audit/event search — `/audit-logs` filters by action, resource type/id, actor, and a free-text `q` that searches action/resource/context;
+- done: one strong vertical workflow with measurable ROI — the job → send → paid loop plus dispatch confidence (the existing product wedge);
+- pending: billing foundation with Stripe or equivalent (founder connects Stripe);
+- pending: plan/subscription model + failed payment handling (build on the `billing_status` field once Stripe is connected);
+- pending: real privacy/terms/data-deletion posture (legal review; the data model already supports tenant-scoped deletion).
 
 Acceptance criteria:
 
@@ -181,23 +174,22 @@ Acceptance criteria:
 
 ### Level 5 — Scalable launch
 
-Status: future.
+Status: gated on scaling infrastructure (Redis-based shared state, queue workers) and founder decisions, not on missing features.
 
 Goal: expand beyond friendly/pilot users into a repeatable acquisition and onboarding motion.
 
 Needed slices:
 
-- multi-region/market polish;
-- provider abstraction hardening;
-- stronger RBAC;
-- organization/team lifecycle;
-- analytics for activation and retention;
-- security review;
-- load and concurrency testing;
-- production-grade queue/worker scaling;
-- durable shared rate limiting;
-- onboarding/import tools;
-- documentation and support workflows.
+- done: timezone-aware company profiles (multiregion/market polish start);
+- done: organization/team lifecycle basics — invitations with roles, memberships, and owner-only suspension/reactivation;
+- partial: stronger RBAC — invitations and settings enforce roles; finer per-slice checks should be added per slice as it ships;
+- partial: provider abstraction hardening — clean port/adapter boundaries exist and stay no-op until providers are activated;
+- partial: documentation and support workflows — `docs/operations.md` covers smoke, deploy, and recovery; expand as operational lessons land;
+- partial: analytics for activation and retention — revenue/conversion/capacity analytics exist; activation funnel scripting is a product decision;
+- pending: durable shared rate limiting and production-grade worker queueing (move `FixedWindowLimiter` to Redis; scale the follow-up sweep across workers);
+- pending: load and concurrency testing once scaling infra is chosen;
+- pending: onboarding/import tools (customer CSV import is the obvious first wedge);
+- pending: security review with a human reviewer (automated tests already cover auth, tokens, tenant scoping, and audit).
 
 Acceptance criteria:
 
@@ -247,6 +239,14 @@ Use this order unless the user explicitly changes priorities.
    - smoke workflow docs — how to run `.github/workflows/production-smoke.yml`, what each step verifies, and how to interpret failures;
    - deploy checklist — ordered database → API → frontend preflight/verify/rollback steps;
    - error-reporting integration plan — phased FastAPI + Next.js capture, alerting, and guardrails; no-op until a real DSN is provided.
+
+7. Levels 2–5 buildable sprint
+   - done: workspace settings (`GET/PATCH /companies/me`) and the dashboard Settings page (profile, timezone, service area, default trade, notification preferences);
+   - done: owner-only admin surface (`GET /admin/company`) and safe suspension path (`PATCH /admin/company/status`; suspended blocks member logins/requests, owner keeps reactivate rights; audit entries);
+   - done: request correlation IDs (`X-Request-ID` header + `request_id=` access logs) and `/audit-logs` filters + text search;
+   - done: `billing_status` field on companies for the future billing hook;
+   - done: reliability/isolation verification — follow-up delivery idempotency, job→invoice and intake→customer→job loop coverage, tenant-scoped principal/audit tests.
+   Next in order is the founder-gated queue in `docs/ai-handoff.md` (provider activation, Sentry, Stripe, restore drill).
 
 ## LLM implementation rules
 

@@ -1,8 +1,11 @@
 from uuid import uuid4
 
+from sqlalchemy import select
+
+from app.models.audit import AuditLog
 from app.models.enums import UserRole
 from app.schemas.principal import Principal
-from app.services.audit import json_safe_context, record_audit_event
+from app.services.audit import apply_audit_filters, json_safe_context, record_audit_event
 
 
 def test_json_safe_context_serializes_uuids_and_enums() -> None:
@@ -47,3 +50,35 @@ def test_record_audit_event_creates_tenant_scoped_event() -> None:
     assert audit_log.actor_user_id == principal.user_id
     assert audit_log.action == "invoice.sent"
     assert audit_log.context == {"resource_id": str(resource_id)}
+
+
+def test_apply_audit_filters_scopes_to_tenant_and_search() -> None:
+    company_id = uuid4()
+    actor_id = uuid4()
+
+    query = apply_audit_filters(
+        select(AuditLog),
+        company_id=company_id,
+        action="invoice.sent",
+        resource_type="invoice",
+        actor_user_id=actor_id,
+        q="amount",
+    )
+    where = str(query.whereclause)
+
+    assert "audit_logs.company_id" in where
+    assert "audit_logs.action" in where
+    assert "audit_logs.resource_type" in where
+    assert "audit_logs.actor_user_id" in where
+    assert "LIKE" in where.upper()
+
+
+def test_apply_audit_filters_without_extra_filters_stays_tenant_scoped() -> None:
+    company_id = uuid4()
+
+    query = apply_audit_filters(select(AuditLog), company_id=company_id)
+    where = str(query.whereclause)
+
+    assert "audit_logs.company_id" in where
+    assert "audit_logs.action" not in where
+    assert "LIKE" not in where.upper()

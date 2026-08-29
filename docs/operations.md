@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Production monitoring for CrewPilot OS: how to run the smoke workflow, what to check on every deploy, and the plan for error reporting. This covers the "production monitoring pass" milestone (smoke workflow docs, deploy checklist, error-reporting integration plan).
+Production monitoring for CrewPilot OS: how to run the smoke workflow, what to check on every deploy, data durability, provider-activation notes, and the plan for error reporting. This covers the "production monitoring pass" milestone (smoke workflow docs, deploy checklist, error-reporting integration plan) and the Level 3 durability/provider items.
 
 ## 1. Production smoke workflow
 
@@ -73,7 +73,46 @@ Order matters: database → API → frontend. Verify each stage before moving on
 - [ ] Open the app and walk one happy path (login → dashboard → a read-only list page).
 - [ ] File the deploy outcome in the session handoff.
 
-## 3. Error-reporting integration plan
+## 4. Data durability
+
+### Backup cadence
+
+- **Supabase native backups** — automatic daily backups on paid plans; enable them and set a retention window that covers at least two full deploy cycles.
+- **Logical backups** — run `apps/api/scripts/backup_db.sh` (or `make db-backup`) weekly and before any deploy that changes migrations. Store the dump off-project (Supabase Storage bucket or S3), never on a running instance.
+- **Every migration-bearing deploy** — baseline a logical backup first (see the deploy preflight checklist).
+
+### Restore drill
+
+Backups are only "not theoretical" once a restore has actually succeeded. The founder owns one manual drill at least quarterly and after any structural schema change:
+
+1. Restore the latest logical dump into a scratch Supabase project in a different region.
+2. Run `alembic upgrade head`.
+3. Verify `GET /api/v1/status` returns `ok` with `current == head`.
+4. Spot-check one customer → job → invoice record per tenant present in the dump.
+5. Note restore time against the recovery target.
+
+### Migration rollback posture
+
+- **Roll forward, not back.** Keep migrations additive and tenant-scoped; if a deploy misbehaves after a forward migration, ship a forward-fix rather than `alembic downgrade`. Downgrades can fail on non-destructive enum/column changes from earlier steps.
+- If a release is truly broken, restore the pre-deploy logical backup and re-apply only the versions you intend to keep — the backup is the recovery point, not `downgrade`.
+- Keep `SECRET_KEY` and password/invite hash settings out of rollback math: rotating them is an independent, additive operation.
+
+### Database pause / availability
+
+- Supabase free projects pause after inactivity — `GET /api/v1/ready` reports degradation the moment the DB goes away, so the smoke workflow / uptime check catches it.
+- Render free webservices cold-start; the smoke job retries network calls to absorb this without false failures.
+- A paused database is recovered by Resume in the Supabase dashboard (founder-owned); then re-run the smoke workflow end to end.
+
+## 5. Provider activation and consent
+
+All external providers are disabled by default (`disabled` in `app/core/config.py`); nothing ships until an account exists. Order of introduction is founder-owned (~ as the pilot needs it).
+
+- **Messaging** — the delivery port lives in `app/services/integrations.py`. Set `messaging_provider=...` only when a real provider account exists; the `recording` provider is for local/dev demos only.
+- **SMS consent** — the app will only SMS customers whose `sms_opt_in` flag is set; when absent it falls back to email, and message delivery is skipped when a customer has no reachable channel (`followup_recipient`).
+- **Webhooks** — when a provider is chosen, validate provider-signed webhook calls with the shared secret from the provider dashboard; never trust an unauthenticated webhook body. Webhook ingestion is a dedicated slice once the provider is picked.
+- **Payments / accounting** — same disabled-by-default pattern (`payments_provider`, `accounting_provider`). Billing data lives on `companies.billing_status` today.
+
+## 6. Error-reporting integration plan
 
 No provider is wired yet; nothing in this plan is active until a DSN/account is provided. Every hook below must degrade to a no-op when the DSN is empty so local development and CI behavior never change.
 
@@ -89,7 +128,7 @@ No provider is wired yet; nothing in this plan is active until a DSN/account is 
 - In `app/main.py`, lazily `sentry_sdk.init(...)` only when `settings.sentry_dsn` is set, with `environment=settings.environment`, `release=api_version()`, and integrations `FastApiIntegration` + `SqlalchemyIntegration`.
 - Attach scope tags when the principal is available (in the `get_principal` dependency in `app/api/deps.py`): `app=api`, `company_id`, `request_id`.
 - Add a `before_send` filter that drops `HTTPException` with `status_code < 500` and the rate-limit 429 (those are probed behavior, not defects). Database connectivity and unexpected `Exception` routes in `/health`, `/ready`, `/status` are already guarded (`_sanitized_error`) — capture at `warning` in logs, do not page on them.
-- Add request-scoped structured logging (a small middleware emitting `request_id`, `method`, `path`, `status`, `duration_ms`, `company_id` when known) so a Sentry event can be correlated with API logs.
+- done: request-scoped structured logging is live — every request logs `request_id`, `method`, `path`, `status`, `duration_ms`, and responses carry `X-Request-ID` (inbound values are reused) — so a Sentry event can be correlated with API logs. Attach `company_id`/`request_id` as Sentry scope tags in `get_principal` when wiring this phase.
 
 ### Phase 2 — Next.js error capture (@sentry/nextjs)
 

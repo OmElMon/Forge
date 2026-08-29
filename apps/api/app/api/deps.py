@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.company import Company
-from app.models.enums import UserRole
+from app.models.enums import CompanyStatus, UserRole
 from app.models.membership import Membership
 from app.models.user import User
 from app.schemas.principal import Principal
@@ -50,6 +50,11 @@ async def get_principal(
     if not row:
         raise credentials_error
     user, company, role = row
+    if company.status == CompanyStatus.SUSPENDED and role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace suspended",
+        )
     return Principal(
         user_id=user.id,
         company_id=company.id,
