@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     password_reset_token_expire_minutes: int = 30
+    invite_expire_days: int = 7
     public_base_url: str = "http://localhost:3000"
     cors_origins: list[str] = ["http://localhost:3000"]
 

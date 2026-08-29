@@ -35,6 +35,7 @@ const nav = [
   { label: "Invoices", icon: CircleDollarSign, href: "/dashboard/invoices" },
   { label: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
   { label: "Activity", icon: BellRing, href: "/dashboard/activity" },
+  { label: "Team", icon: UsersRound, href: "/dashboard/team" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

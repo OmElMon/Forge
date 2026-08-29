@@ -240,10 +240,12 @@ Use this order unless the user explicitly changes priorities.
    Next in order is team invite basics.
 
 5. Team invite basics
-   - invite user;
-   - assign role;
-   - accept invite;
-   - tenant-safe membership creation.
+   - done: owner/admin can invite a teammate with a role, expires outstanding invites for the same email, and the invite arrives as a single-use email link (fingerprint-only token, 7-day expiry);
+   - done: `GET/POST /invites`, `POST /invites/{id}/cancel`, `POST /invites/{id}/resend`, `GET /memberships`, public `GET /invites/preview` + `POST /auth/invites/accept`;
+   - done: accept creates the user + tenant-scoped membership in one step (or just adds the membership for an existing active user), issues a login session, and writes `invite.*` audit entries;
+   - done: role rules — owner invites any role; admin cannot invite owner/admin; technicians/office staff cannot send invites;
+   - done: `dashboard/team` page (members + invites with resend/cancel) and public `accept-invite` page.
+   Next in order is the production monitoring pass.
 
 6. Production monitoring pass
    - smoke workflow docs;

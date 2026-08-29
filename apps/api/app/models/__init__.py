@@ -5,6 +5,7 @@ from app.models.domain_event import DomainEvent
 from app.models.equipment import Equipment
 from app.models.followup_task import FollowupTask
 from app.models.intake_record import IntakeRecord
+from app.models.invite import Invite
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
@@ -25,6 +26,7 @@ __all__ = [
     "Invoice",
     "InvoiceLineItem",
     "IntakeRecord",
+    "Invite",
     "Job",
     "Membership",
     "PasswordReset",

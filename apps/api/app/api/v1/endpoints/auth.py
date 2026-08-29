@@ -12,8 +12,10 @@ from app.schemas.auth import (
     SignUpRequest,
     TokenPair,
 )
+from app.schemas.invite import InviteAcceptRequest
 from app.schemas.principal import Principal
 from app.services.auth import authenticate, register, revoke_refresh_token, rotate_refresh_token
+from app.services.invites import accept_company_invite
 from app.services.password_reset import confirm_password_reset, request_password_reset
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -60,3 +62,10 @@ async def password_reset_confirm(
 ) -> Response:
     await confirm_password_reset(db, payload)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/invites/accept", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
+async def invite_accept(
+    payload: InviteAcceptRequest, db: AsyncSession = Depends(get_db)
+) -> TokenPair:
+    return await accept_company_invite(db, payload)

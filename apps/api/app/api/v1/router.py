@@ -11,8 +11,10 @@ from app.api.v1.endpoints import (
     followups,
     health,
     intake,
+    invites,
     invoices,
     jobs,
+    memberships,
     technicians,
 )
 
@@ -30,3 +32,5 @@ api_router.include_router(events.router)
 api_router.include_router(followups.router)
 api_router.include_router(dispatch.router)
 api_router.include_router(intake.router)
+api_router.include_router(invites.router)
+api_router.include_router(memberships.router)

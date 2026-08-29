@@ -28,7 +28,7 @@ def _slugify(value: str) -> str:
     return slug[:70] or "company"
 
 
-async def _issue_tokens(db: AsyncSession, user_id: UUID, company_id: UUID) -> TokenPair:
+async def issue_tokens(db: AsyncSession, user_id: UUID, company_id: UUID) -> TokenPair:
     access, _, _ = create_token(
         subject=user_id,
         company_id=company_id,
@@ -79,7 +79,7 @@ async def register(db: AsyncSession, payload: SignUpRequest) -> TokenPair:
     db.add_all([company, user])
     await db.flush()
     db.add(Membership(company_id=company.id, user_id=user.id, role=UserRole.OWNER))
-    tokens = await _issue_tokens(db, user.id, company.id)
+    tokens = await issue_tokens(db, user.id, company.id)
     await db.commit()
     return tokens
 
@@ -99,7 +99,7 @@ async def authenticate(db: AsyncSession, payload: LoginRequest) -> TokenPair:
         )
     if not user.memberships:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No company access")
-    tokens = await _issue_tokens(db, user.id, user.memberships[0].company_id)
+    tokens = await issue_tokens(db, user.id, user.memberships[0].company_id)
     await db.commit()
     return tokens
 
@@ -129,7 +129,7 @@ async def rotate_refresh_token(db: AsyncSession, token: str) -> TokenPair:
     if not session:
         raise unauthorized
     session.revoked_at = datetime.now(UTC)
-    tokens = await _issue_tokens(db, user_id, company_id)
+    tokens = await issue_tokens(db, user_id, company_id)
     await db.commit()
     return tokens
 
