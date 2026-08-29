@@ -43,7 +43,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args=database_engine_options(settings.database_url).get("connect_args"),
+        connect_args=database_engine_options(settings.database_url).get("connect_args") or {},
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
