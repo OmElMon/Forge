@@ -80,28 +80,23 @@ Goal: invite a small number of friendly testers without risky or confusing accou
 Needed slices:
 
 1. First-run onboarding checklist
-   - guide user through first customer/intake record;
-   - create first job;
-   - create first estimate/invoice;
-   - review follow-ups.
+   - done: guides user through first customer/intake record, first job, first estimate/invoice, and follow-up review (live-data progress + completion state).
+   - done: dashboard checklist card.
 
 2. Invite/team basics
-   - invite team member;
-   - assign role;
-   - resend/cancel invite;
-   - keep membership creation tenant-safe.
+   - done: invite team member, assign role, resend/cancel invite, tenant-safe membership creation (see slice 5 below).
 
 3. Account recovery basics
    - done: password reset request + single-use reset token lifecycle with expiry and one-time use;
-   - email delivery boundary with local/dev fake (in-UI dev code when no provider is configured).
+   - done: email delivery boundary with local/dev fake (in-UI dev code when no provider is configured).
 
 4. Production smoke routine
-   - manual smoke test docs;
-   - health/readiness/status checks;
-   - basic post-deploy checklist.
+   - done: smoke workflow docs at `docs/operations.md`;
+   - done: health/readiness/status checks (`/health`, `/ready`, `/status` + production-smoke workflow);
+   - done: post-deploy checklist at `docs/operations.md`.
 
 5. Demo/tester guardrails
-   - clear test-data labeling;
+   - test-data labeling;
    - simple company settings;
    - no accidental cross-tenant reads;
    - no production seed unless explicitly allowed.
@@ -248,9 +243,10 @@ Use this order unless the user explicitly changes priorities.
    Next in order is the production monitoring pass.
 
 6. Production monitoring pass
-   - smoke workflow docs;
-   - deploy checklist;
-   - error-reporting integration plan.
+   - done: dedicated operations runbook at `docs/operations.md` —
+   - smoke workflow docs — how to run `.github/workflows/production-smoke.yml`, what each step verifies, and how to interpret failures;
+   - deploy checklist — ordered database → API → frontend preflight/verify/rollback steps;
+   - error-reporting integration plan — phased FastAPI + Next.js capture, alerting, and guardrails; no-op until a real DSN is provided.
 
 ## LLM implementation rules
 

@@ -32,6 +32,8 @@ Before chasing product bugs, verify the platform assumptions:
 
 The production smoke test (`.github/workflows/production-smoke.yml`, run from GitHub Actions with the frontend/API URLs) verifies these endpoints and asserts the migration status is `ok` — run it manually after deploys instead of guessing from a single curl. All smoke requests tolerate Render cold starts via retries.
 
+See `docs/operations.md` for the full runbook: smoke workflow how-to, the deploy checklist, and the error-reporting integration plan.
+
 ### Debugging a degraded `/api/v1/status`
 
 - `checks.database.status = "error"` — the API cannot reach Postgres. Check `DATABASE_URL` (Supabase pooler URL encoded, `postgresql+asyncpg://` prefix) and that Supabase is not paused. The `detail` field shows the sanitized error.

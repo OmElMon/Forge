@@ -7,6 +7,8 @@ CrewPilot OS is split into two deployable services:
 
 Netlify should only host the frontend. The API, PostgreSQL, and Redis need to be hosted separately.
 
+Run `docs/operations.md` for the deploy checklist and post-deploy smoke verification.
+
 ## Netlify frontend
 
 The repository includes a root `netlify.toml` so Netlify can build the web app from the monorepo automatically.
