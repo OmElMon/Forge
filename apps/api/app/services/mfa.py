@@ -22,6 +22,7 @@ from app.models.user import User
 from app.schemas.auth import (
     MfaChallengeVerifyRequest,
     MfaEnrollResult,
+    MfaStatus,
     TokenPair,
 )
 from app.schemas.principal import Principal
@@ -118,6 +119,14 @@ async def disable_mfa(db: AsyncSession, principal: Principal, code: str) -> None
         resource_id=principal.user_id,
     )
     await db.commit()
+
+
+async def mfa_status(db: AsyncSession, principal: Principal) -> MfaStatus:
+    """Report the caller's own MFA enrollment state for the settings UI."""
+    setting = await db.scalar(select(MfaSetting).where(MfaSetting.user_id == principal.user_id))
+    if setting is None:
+        return MfaStatus()
+    return MfaStatus(configured=True, confirmed=bool(setting.confirmed))
 
 
 async def verify_mfa_challenge(db: AsyncSession, payload: MfaChallengeVerifyRequest) -> TokenPair:

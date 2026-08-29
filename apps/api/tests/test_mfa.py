@@ -31,6 +31,7 @@ from app.services.mfa import (
     confirm_mfa_enrollment,
     disable_mfa,
     enroll_mfa,
+    mfa_status,
     verify_mfa_challenge,
 )
 
@@ -402,3 +403,32 @@ class TestEnrollment:
             asyncio.run(disable_mfa(session, make_principal(user, membership), "000000"))
         assert exc.value.status_code == 400
         assert setting not in session.deleted
+
+
+class TestStatus:
+    def test_reports_absent_when_not_enrolled(self) -> None:
+        user, membership, _ = make_user()
+        session = FakeEnrollSession(None)
+
+        status = asyncio.run(mfa_status(session, make_principal(user, membership)))
+
+        assert status.configured is False
+        assert status.confirmed is False
+
+    def test_reports_confirmed_when_enabled(self) -> None:
+        user, membership, _ = make_user()
+        session = FakeEnrollSession(seeded_setting(True))
+
+        status = asyncio.run(mfa_status(session, make_principal(user, membership)))
+
+        assert status.configured is True
+        assert status.confirmed is True
+
+    def test_reports_pending_when_unconfirmed(self) -> None:
+        user, membership, _ = make_user()
+        session = FakeEnrollSession(seeded_setting(False))
+
+        status = asyncio.run(mfa_status(session, make_principal(user, membership)))
+
+        assert status.configured is True
+        assert status.confirmed is False

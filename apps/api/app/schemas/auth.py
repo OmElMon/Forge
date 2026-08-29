@@ -84,3 +84,8 @@ class MfaDisableRequest(BaseModel):
 class MfaChallengeVerifyRequest(BaseModel):
     mfa_session: str
     code: str = Field(min_length=6, max_length=64)
+
+
+class MfaStatus(BaseModel):
+    configured: bool = False
+    confirmed: bool = False

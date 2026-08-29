@@ -16,6 +16,7 @@ from app.schemas.auth import (
     MfaConfirmRequest,
     MfaDisableRequest,
     MfaEnrollResult,
+    MfaStatus,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RefreshRequest,
@@ -35,6 +36,7 @@ from app.services.mfa import (
     confirm_mfa_enrollment,
     disable_mfa,
     enroll_mfa,
+    mfa_status,
     verify_mfa_challenge,
 )
 from app.services.password_reset import confirm_password_reset, request_password_reset
@@ -132,6 +134,14 @@ async def invite_accept(
     payload: InviteAcceptRequest, db: AsyncSession = Depends(get_db)
 ) -> TokenPair:
     return await accept_company_invite(db, payload)
+
+
+@router.get("/mfa", response_model=MfaStatus)
+async def mfa_status_route(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> MfaStatus:
+    return await mfa_status(db, principal)
 
 
 @router.post("/mfa/verify", response_model=TokenPair)

@@ -15,6 +15,8 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { MfaSection } from "@/components/mfa-section";
+
 type CompanyRead = {
   id: string;
   name: string;
@@ -343,6 +345,8 @@ export default function SettingsPage() {
           </div>
         </form>
       )}
+
+      {!loading && <MfaSection />}
 
       {admin && (
         <section className="mt-8 overflow-hidden rounded-xl border bg-white shadow-panel">

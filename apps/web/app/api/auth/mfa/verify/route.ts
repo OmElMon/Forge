@@ -6,13 +6,13 @@ export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
 
   const payload = await request.json().catch(() => null);
-  if (!payload || typeof payload.email !== "string" || typeof payload.password !== "string") {
-    return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+  if (!payload || typeof payload.mfa_session !== "string" || typeof payload.code !== "string") {
+    return NextResponse.json({ error: "A verification code is required." }, { status: 400 });
   }
 
   try {
-    const upstream = await fetch(apiUrl("/auth/login"), {
-      body: JSON.stringify({ email: payload.email, password: payload.password }),
+    const upstream = await fetch(apiUrl("/auth/mfa/verify"), {
+      body: JSON.stringify({ mfa_session: payload.mfa_session, code: payload.code }),
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       method: "POST",
@@ -20,12 +20,8 @@ export async function POST(request: NextRequest) {
     if (!upstream.ok) {
       return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
     }
-    const result = (await upstream.json()) as TokenPair & { mfa_required?: boolean; mfa_session?: string };
-    if (result.mfa_required) {
-      return NextResponse.json({ mfa_required: true, mfa_session: result.mfa_session ?? null });
-    }
     const response = NextResponse.json({ ok: true });
-    setSessionCookies(response, result);
+    setSessionCookies(response, (await upstream.json()) as TokenPair);
     return response;
   } catch {
     return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
