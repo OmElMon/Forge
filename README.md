@@ -76,8 +76,6 @@ If another AI assistant or a future Codex session continues the project, start w
 
 ## Next product slices
 
-- Finish intake/lead flow in the web UI
-- Align invoice UI actions with dedicated workflow endpoints
-- Add first-run onboarding checklist
-- Add password reset and team invite basics
-- Add production monitoring/onboarding guardrails for friendly testers
+- Invoice workflow actions (send/approve/convert/mark-paid/void/reopen) run through dedicated endpoints; `PATCH` now edits metadata only
+- Intake/lead flow, first-run onboarding checklist, password reset, and team invites are complete
+- Remaining work is founder-gated: messaging provider, Stripe, Sentry DSN, backup restore drill, uptime monitor, legal review (see `docs/ai-handoff.md`)

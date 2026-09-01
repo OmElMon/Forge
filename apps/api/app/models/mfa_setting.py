@@ -30,5 +30,7 @@ class MfaSetting(TimestampMixin, Base):
     secret: Mapped[str] = mapped_column(String(64), nullable=False)
     recovery_hashes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pending_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pending_recovery_hashes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="mfa_settings")

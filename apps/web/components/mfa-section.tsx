@@ -46,6 +46,7 @@ export function MfaSection() {
   const [status, setStatus] = useState<MfaStatus | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [enroll, setEnroll] = useState<EnrollResult | null>(null);
+  const [enrollConfirmed, setEnrollConfirmed] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [codesSaved, setCodesSaved] = useState(false);
   const [disablePrompt, setDisablePrompt] = useState(false);
@@ -77,6 +78,8 @@ export function MfaSection() {
   async function startSetup(refreshStatus = false) {
     setEnrolling(true);
     setError("");
+    setEnrollConfirmed(false);
+    setCodesSaved(false);
     try {
       const response = await fetch("/api/auth/mfa/enroll", { method: "POST" });
       const payload = await readApiResponse(response);
@@ -117,6 +120,7 @@ export function MfaSection() {
         setError(errorMessage(payload, "Unable to enable two-factor authentication."));
         return;
       }
+      setEnrollConfirmed(true);
       setStatus({ configured: true, confirmed: true });
     } catch {
       setError("CrewPilot OS could not enable two-factor authentication.");
@@ -143,6 +147,7 @@ export function MfaSection() {
       }
       setStatus({ configured: false, confirmed: false });
       setEnroll(null);
+      setEnrollConfirmed(false);
       setCodesSaved(false);
       setDisablePrompt(false);
     } catch {
@@ -257,7 +262,7 @@ export function MfaSection() {
                   <div>
                     <p className="text-sm font-semibold text-indigo-900">Scan or add your authenticator key</p>
                     <p className="text-sm text-indigo-800">
-                      {status?.confirmed ? "Verification saved. Store these recovery codes somewhere safe." : "Open your authenticator app, then enter the rotating code below."}
+                      {enrollConfirmed ? "Verification saved. Store these recovery codes somewhere safe." : "Open your authenticator app, then enter the rotating code below."}
                     </p>
                   </div>
                 </div>
@@ -282,7 +287,7 @@ export function MfaSection() {
                 </a>
               </div>
 
-              {status?.confirmed ? (
+              {enrollConfirmed ? (
                 <div className="space-y-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
                     <CheckCircle2 className="size-4" /> Two-factor authentication enabled

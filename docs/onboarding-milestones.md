@@ -58,12 +58,12 @@ Already built:
 - production health/status endpoints;
 - rate limiting;
 - backup/deploy tooling;
-- integration-ready adapter boundaries.
+- integration-ready adapter boundaries;
+- invoice workflow buttons aligned with the dedicated action endpoints — send/approve/convert/mark-paid/void/reopen run through `POST /invoices/{id}/{action}`; `PATCH` is reserved for metadata edits and the edit form hides void/converted/paid states behind the workflow actions.
 
 Remaining work:
 
-- ensure empty/loading/error states stay understandable as data grows;
-- keep the invoice UI aligned with dedicated workflow endpoints instead of generic updates.
+- ensure empty/loading/error states stay understandable as data grows.
 
 Acceptance criteria:
 

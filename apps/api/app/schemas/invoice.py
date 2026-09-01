@@ -28,6 +28,11 @@ class InvoiceUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class InvoiceReopen(BaseModel):
+    status: InvoiceStatus = InvoiceStatus.DRAFT
+    notes: str | None = Field(default=None, max_length=4000)
+
+
 class InvoiceRead(BaseModel):
     id: UUID
     company_id: UUID

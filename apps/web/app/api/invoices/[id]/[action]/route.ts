@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
 
-const allowedActions = new Set(["approve", "convert-to-invoice", "mark-paid", "send"]);
+const allowedActions = new Set(["approve", "convert-to-invoice", "mark-paid", "reopen", "send", "void"]);
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -30,9 +30,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Unsupported invoice action." }, { status: 404 });
   }
 
+  const body = await request.json().catch(() => ({}));
+  const payload = body && typeof body === "object" ? body : {};
+
   try {
     const upstream = await fetch(apiUrl(`/invoices/${id}/${action}`), {
-      body: "{}",
+      body: JSON.stringify(payload),
       cache: "no-store",
       headers,
       method: "POST",

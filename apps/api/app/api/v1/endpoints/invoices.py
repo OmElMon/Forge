@@ -16,7 +16,13 @@ from app.models.enums import (
 from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem
 from app.models.job import Job
-from app.schemas.invoice import InvoiceConversionRead, InvoiceCreate, InvoiceRead, InvoiceUpdate
+from app.schemas.invoice import (
+    InvoiceConversionRead,
+    InvoiceCreate,
+    InvoiceRead,
+    InvoiceReopen,
+    InvoiceUpdate,
+)
 from app.schemas.invoice_line_item import (
     InvoiceLineItemCreate,
     InvoiceLineItemRead,
@@ -38,6 +44,14 @@ def invoice_transition_event_type(
 ) -> DomainEventType:
     if previous_type == InvoiceType.ESTIMATE and next_type == InvoiceType.INVOICE:
         return DomainEventType.ESTIMATE_CONVERTED
+    if next_status == InvoiceStatus.VOID and previous_status != InvoiceStatus.VOID:
+        return DomainEventType.INVOICE_VOIDED
+    if previous_status in {
+        InvoiceStatus.VOID,
+        InvoiceStatus.CONVERTED,
+        InvoiceStatus.PAID,
+    } and next_status in {InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED}:
+        return DomainEventType.INVOICE_REOPENED
     if next_status == InvoiceStatus.SENT:
         return DomainEventType.INVOICE_SENT
     if (
@@ -65,6 +79,19 @@ def append_workflow_note(existing_notes: str | None, note: str) -> str:
     if not existing_notes:
         return note
     return f"{existing_notes.rstrip()}\n\n{note}"
+
+
+REOPEN_TARGETS: dict[InvoiceStatus, set[InvoiceStatus]] = {
+    InvoiceStatus.VOID: {InvoiceStatus.DRAFT, InvoiceStatus.SENT},
+    InvoiceStatus.CONVERTED: {InvoiceStatus.DRAFT},
+    InvoiceStatus.PAID: {InvoiceStatus.SENT},
+}
+
+WORKFLOW_GUARDED_STATUSES: set[InvoiceStatus] = {
+    InvoiceStatus.VOID,
+    InvoiceStatus.CONVERTED,
+    InvoiceStatus.PAID,
+}
 
 
 def invoice_audit_context(invoice: Invoice, **extra: object) -> dict[str, object]:
@@ -263,6 +290,17 @@ async def update_invoice(
     updates = payload.model_dump(exclude_unset=True)
     previous_status = invoice.status
     previous_type = invoice.document_type
+    if "status" in updates and (
+        updates["status"] in WORKFLOW_GUARDED_STATUSES
+        or invoice.status in WORKFLOW_GUARDED_STATUSES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Use the dedicated invoice workflow endpoints to void, convert, "
+                "reopen, or mark an invoice paid."
+            ),
+        )
     if "customer_id" in updates:
         await ensure_company_customer(updates["customer_id"], db, principal)
     next_customer_id = updates.get("customer_id", invoice.customer_id)
@@ -403,6 +441,88 @@ async def mark_invoice_paid(
         aggregate_id=invoice.id,
         aggregate_type=DomainAggregateType.INVOICE,
         event_type=DomainEventType.INVOICE_PAID,
+        payload=invoice_audit_context(invoice),
+    )
+    await db.commit()
+    await db.refresh(invoice)
+    return invoice
+
+
+@router.post("/{invoice_id}/void", response_model=InvoiceRead)
+async def void_invoice(
+    invoice_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
+) -> Invoice:
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    ensure_invoice_transition(
+        invoice,
+        allowed_types={InvoiceType.ESTIMATE, InvoiceType.INVOICE},
+        allowed_statuses={InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPROVED},
+        detail="Only open estimates or invoices can be voided.",
+    )
+    invoice.status = InvoiceStatus.VOID
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.voided",
+        context=invoice_audit_context(invoice),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_VOIDED,
+        payload=invoice_audit_context(invoice),
+    )
+    await db.commit()
+    await db.refresh(invoice)
+    return invoice
+
+
+@router.post("/{invoice_id}/reopen", response_model=InvoiceRead)
+async def reopen_invoice(
+    invoice_id: UUID,
+    payload: InvoiceReopen,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_roles(*BACK_OFFICE_ROLES)),
+) -> Invoice:
+    invoice = await get_company_invoice(invoice_id, db, principal)
+    allowed_targets = REOPEN_TARGETS.get(invoice.status)
+    if allowed_targets is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only voided, converted, or paid estimates/invoices can be reopened.",
+        )
+    if payload.status not in allowed_targets:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Status '{payload.status.value}' is not a valid reopen target "
+                f"from '{invoice.status.value}'."
+            ),
+        )
+    previous_status = invoice.status
+    invoice.status = payload.status
+    if payload.notes:
+        invoice.notes = append_workflow_note(invoice.notes, payload.notes)
+    record_audit_event(
+        db,
+        principal,
+        action="invoice.reopened",
+        context=invoice_audit_context(invoice, previous_status=previous_status.value),
+        resource_id=invoice.id,
+        resource_type="invoice",
+    )
+    emit_domain_event(
+        db,
+        principal,
+        aggregate_id=invoice.id,
+        aggregate_type=DomainAggregateType.INVOICE,
+        event_type=DomainEventType.INVOICE_REOPENED,
         payload=invoice_audit_context(invoice),
     )
     await db.commit()

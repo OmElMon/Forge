@@ -97,6 +97,8 @@ class DomainEventType(StrEnum):
     ESTIMATE_APPROVED = "estimate.approved"
     ESTIMATE_CONVERTED = "estimate.converted"
     INVOICE_PAID = "invoice.paid"
+    INVOICE_VOIDED = "invoice.voided"
+    INVOICE_REOPENED = "invoice.reopened"
     INVOICE_LINE_ITEM_ADDED = "invoice.line_item.added"
     INVOICE_LINE_ITEM_UPDATED = "invoice.line_item.updated"
     INVOICE_LINE_ITEM_REMOVED = "invoice.line_item.deleted"

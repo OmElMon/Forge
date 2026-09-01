@@ -52,28 +52,41 @@ def verify_mfa_code(setting: MfaSetting, code: str) -> str | None:
 
 
 async def enroll_mfa(db: AsyncSession, principal: Principal) -> MfaEnrollResult:
-    """Create a pending TOTP enrollment, returning the one-time secret + codes."""
+    """Create a pending TOTP enrollment, returning the one-time secret + codes.
+
+    If the user already has a confirmed enrollment, the new secret is staged as
+    a pending reconfigure so the old secret stays active until it is confirmed.
+    """
     secret = pyotp.random_base32()
     recovery_codes = generate_recovery_codes()
+    hashed_codes = [hash_reset_pin(code) for code in recovery_codes]
     existing = await db.scalar(select(MfaSetting).where(MfaSetting.user_id == principal.user_id))
-    if existing is not None:
-        await db.delete(existing)
-        await db.flush()
-    db.add(
-        MfaSetting(
-            user_id=principal.user_id,
-            secret=secret,
-            recovery_hashes=[hash_reset_pin(code) for code in recovery_codes],
-            confirmed=False,
-        )
-    )
+    if existing is not None and existing.confirmed:
+        existing.pending_secret = secret
+        existing.pending_recovery_hashes = hashed_codes
+    else:
+        if existing is not None:
+            existing.secret = secret
+            existing.recovery_hashes = hashed_codes
+        else:
+            db.add(
+                MfaSetting(
+                    user_id=principal.user_id,
+                    secret=secret,
+                    recovery_hashes=hashed_codes,
+                    confirmed=False,
+                )
+            )
     record_audit_event(
         db,
         principal,
         action="auth.mfa.enrolled",
         resource_type="mfa_settings",
         resource_id=principal.user_id,
-        context={"confirmed": False},
+        context={
+            "confirmed": False,
+            "pending_reconfigure": existing is not None and existing.confirmed,
+        },
     )
     await db.commit()
     provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
@@ -89,8 +102,13 @@ async def confirm_mfa_enrollment(db: AsyncSession, principal: Principal, code: s
     setting = await db.scalar(select(MfaSetting).where(MfaSetting.user_id == principal.user_id))
     if setting is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No pending enrollment")
-    if not pyotp.TOTP(setting.secret).verify(code, valid_window=1):
+    if not pyotp.TOTP(setting.pending_secret or setting.secret).verify(code, valid_window=1):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+    if setting.pending_secret:
+        setting.secret = setting.pending_secret
+        setting.recovery_hashes = setting.pending_recovery_hashes or []
+        setting.pending_secret = None
+        setting.pending_recovery_hashes = None
     setting.confirmed = True
     record_audit_event(
         db,

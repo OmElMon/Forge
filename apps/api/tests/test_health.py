@@ -4,7 +4,7 @@ from app.api.v1.endpoints.health import api_version, migration_head
 from app.db.session import get_db
 from app.main import app
 
-LATEST_MIGRATION = "20260830_0021"
+LATEST_MIGRATION = "20260901_0022"
 STALE_MIGRATION = "20260827_0017"
 
 

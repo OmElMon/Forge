@@ -49,13 +49,14 @@ type InvoiceLineItem = {
   updated_at: string;
 };
 
-type InvoiceWorkflowAction = "approve" | "convert-to-invoice" | "mark-paid" | "send";
+type InvoiceWorkflowAction = "approve" | "convert-to-invoice" | "mark-paid" | "reopen" | "send" | "void";
 
 type RevenueAction = {
   label: string;
   tone?: "default" | "primary" | "danger";
   kind: "patch" | "workflow";
   workflow?: InvoiceWorkflowAction;
+  workflowStatus?: InvoiceStatus;
   status?: InvoiceStatus;
 };
 
@@ -84,21 +85,28 @@ const typeLabels: Record<InvoiceType, string> = {
 
 function revenueActionsFor(invoice: Invoice): RevenueAction[] {
   if (invoice.status === "void") {
-    return [{ kind: "patch", label: "Reopen as draft", status: "draft" }];
+    return [
+      {
+        kind: "workflow",
+        label: "Reopen as draft",
+        workflow: "reopen",
+        workflowStatus: "draft",
+      },
+    ];
   }
 
   if (invoice.document_type === "estimate") {
     if (invoice.status === "draft") {
       return [
         { kind: "workflow", label: "Send estimate", tone: "primary", workflow: "send" },
-        { kind: "patch", label: "Void estimate", status: "void", tone: "danger" },
+        { kind: "workflow", label: "Void estimate", tone: "danger", workflow: "void" },
       ];
     }
 
     if (invoice.status === "sent") {
       return [
         { kind: "workflow", label: "Approve estimate", tone: "primary", workflow: "approve" },
-        { kind: "patch", label: "Void estimate", status: "void", tone: "danger" },
+        { kind: "workflow", label: "Void estimate", tone: "danger", workflow: "void" },
       ];
     }
 
@@ -114,7 +122,14 @@ function revenueActionsFor(invoice: Invoice): RevenueAction[] {
     }
 
     if (invoice.status === "converted") {
-      return [{ kind: "patch", label: "Reopen as draft", status: "draft" }];
+      return [
+        {
+          kind: "workflow",
+          label: "Reopen as draft",
+          workflow: "reopen",
+          workflowStatus: "draft",
+        },
+      ];
     }
   }
 
@@ -122,26 +137,33 @@ function revenueActionsFor(invoice: Invoice): RevenueAction[] {
     if (invoice.status === "draft") {
       return [
         { kind: "workflow", label: "Send invoice", tone: "primary", workflow: "send" },
-        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
+        { kind: "workflow", label: "Void invoice", tone: "danger", workflow: "void" },
       ];
     }
 
     if (invoice.status === "sent") {
       return [
         { kind: "workflow", label: "Mark paid", tone: "primary", workflow: "mark-paid" },
-        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
+        { kind: "workflow", label: "Void invoice", tone: "danger", workflow: "void" },
       ];
     }
 
     if (invoice.status === "approved") {
       return [
         { kind: "workflow", label: "Mark paid", tone: "primary", workflow: "mark-paid" },
-        { kind: "patch", label: "Void invoice", status: "void", tone: "danger" },
+        { kind: "workflow", label: "Void invoice", tone: "danger", workflow: "void" },
       ];
     }
 
     if (invoice.status === "paid") {
-      return [{ kind: "patch", label: "Reopen as sent", status: "sent" }];
+      return [
+        {
+          kind: "workflow",
+          label: "Reopen as sent",
+          workflow: "reopen",
+          workflowStatus: "sent",
+        },
+      ];
     }
   }
 
@@ -181,17 +203,22 @@ function centsFromInput(value: FormDataEntryValue | null) {
   return Math.round(parsed * 100);
 }
 
-function invoicePayload(form: FormData) {
+const EDITABLE_STATUSES = new Set<InvoiceStatus>(["draft", "sent", "approved"]);
+
+function invoicePayload(form: FormData, currentStatus?: InvoiceStatus) {
   const dueAt = form.get("due_at");
-  return {
+  const payload: Record<string, unknown> = {
     amount_cents: centsFromInput(form.get("amount")),
     customer_id: form.get("customer_id"),
     document_type: form.get("document_type"),
     due_at: dueAt ? new Date(String(dueAt)).toISOString() : null,
     notes: form.get("notes") || null,
-    status: form.get("status"),
     title: form.get("title"),
   };
+  if (!currentStatus || EDITABLE_STATUSES.has(currentStatus)) {
+    payload.status = form.get("status");
+  }
+  return payload;
 }
 
 function lineItemPayload(form: FormData, sortOrder = 0) {
@@ -374,7 +401,7 @@ export default function InvoicesPage() {
 
     try {
       const response = await fetch(`/api/invoices/${selectedInvoice.id}`, {
-        body: JSON.stringify(invoicePayload(form)),
+        body: JSON.stringify(invoicePayload(form, selectedInvoice.status)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
@@ -400,8 +427,12 @@ export default function InvoicesPage() {
     setNotice("");
     try {
       if (action.kind === "workflow" && action.workflow) {
+        const body =
+          action.workflow === "reopen" && action.workflowStatus
+            ? JSON.stringify({ status: action.workflowStatus })
+            : "{}";
         const response = await fetch(`/api/invoices/${invoice.id}/${action.workflow}`, {
-          body: "{}",
+          body,
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
@@ -894,14 +925,20 @@ function InvoiceFields({ customers, invoice }: { customers: Customer[]; invoice?
         </label>
         <label className="block text-sm font-medium">
           Status
-          <select name="status" defaultValue={invoice?.status ?? "draft"} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="approved">Approved</option>
-            <option value="converted">Converted</option>
-            <option value="paid">Paid</option>
-            <option value="void">Void</option>
-          </select>
+          {invoice && !EDITABLE_STATUSES.has(invoice.status) ? (
+            <input
+              name="status"
+              defaultValue={statusLabels[invoice.status]}
+              disabled
+              className="mt-2 h-10 w-full cursor-not-allowed rounded-lg border bg-gray-50 px-3 text-sm text-gray-500"
+            />
+          ) : (
+            <select name="status" defaultValue={invoice?.status ?? "draft"} className="mt-2 h-10 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="approved">Approved</option>
+            </select>
+          )}
         </label>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">

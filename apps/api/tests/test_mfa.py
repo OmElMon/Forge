@@ -330,15 +330,43 @@ class TestEnrollment:
         )
         assert session.committed
 
-    def test_enroll_replaces_existing_setting(self) -> None:
+    def test_enroll_updates_existing_unconfirmed_setting_in_place(self) -> None:
         user, membership, _ = make_user()
         existing = make_setting(confirmed=False)
+        existing.recovery_hashes = [hash_reset_pin("old-recovery-code")]
         session = FakeEnrollSession(existing)
 
-        asyncio.run(enroll_mfa(session, make_principal(user, membership)))
+        result = asyncio.run(enroll_mfa(session, make_principal(user, membership)))
 
-        assert existing in session.deleted
-        assert len([o for o in session.objects if isinstance(o, MfaSetting)]) == 1
+        assert existing not in session.deleted
+        assert not any(isinstance(o, MfaSetting) for o in session.objects)
+        assert existing.secret == result.secret
+        assert all(
+            verify_reset_pin(code, encoded)
+            for code, encoded in zip(result.recovery_codes, existing.recovery_hashes, strict=True)
+        )
+
+    def test_enroll_while_confirmed_stages_pending_and_preserves_active_secret(self) -> None:
+        user, membership, _ = make_user()
+        existing = make_setting(confirmed=True)
+        old_secret = existing.secret
+        old_codes = [hash_reset_pin("old-recovery-code")]
+        existing.recovery_hashes = old_codes
+        session = FakeEnrollSession(existing)
+
+        result = asyncio.run(enroll_mfa(session, make_principal(user, membership)))
+
+        assert existing not in session.deleted
+        assert existing.pending_secret == result.secret
+        assert existing.secret == old_secret
+        assert existing.recovery_hashes == old_codes
+        assert existing.confirmed is True
+        assert all(
+            verify_reset_pin(code, encoded)
+            for code, encoded in zip(
+                result.recovery_codes, existing.pending_recovery_hashes, strict=True
+            )
+        )
 
     def test_confirm_activates_enrollment(self) -> None:
         user, membership, _ = make_user()
@@ -353,6 +381,46 @@ class TestEnrollment:
 
         assert setting.confirmed is True
         assert session.committed
+
+    def test_confirm_applies_pending_reconfigure_and_rotates_codes(self) -> None:
+        user, membership, _ = make_user()
+        setting = seeded_setting(True)
+        old_secret = setting.secret
+        pending_secret = pyotp.random_base32()
+        setting.pending_secret = pending_secret
+        setting.pending_recovery_hashes = [hash_reset_pin("new-code")]
+        session = FakeEnrollSession(setting)
+
+        asyncio.run(
+            confirm_mfa_enrollment(
+                session,
+                make_principal(user, membership),
+                pyotp.TOTP(setting.pending_secret).now(),
+            )
+        )
+
+        assert setting.secret == pending_secret
+        assert setting.pending_secret is None
+        assert setting.pending_recovery_hashes is None
+        assert all(verify_reset_pin("new-code", h) for h in setting.recovery_hashes)
+        assert setting.secret != old_secret
+        assert setting.confirmed is True
+
+    def test_confirm_rejects_code_from_old_secret_during_pending(self) -> None:
+        user, membership, _ = make_user()
+        setting = seeded_setting(True)
+        setting.pending_secret = pyotp.random_base32()
+        setting.pending_recovery_hashes = [hash_reset_pin("new-code")]
+        session = FakeEnrollSession(setting)
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(
+                confirm_mfa_enrollment(
+                    session, make_principal(user, membership), pyotp.TOTP(setting.secret).now()
+                )
+            )
+        assert exc.value.status_code == 400
+        assert setting.pending_secret is not None
 
     def test_confirm_rejects_invalid_code(self) -> None:
         user, membership, _ = make_user()
@@ -390,6 +458,20 @@ class TestEnrollment:
         session = FakeEnrollSession(setting)
 
         asyncio.run(disable_mfa(session, make_principal(user, membership), "second-recovery-code"))
+
+        assert setting in session.deleted
+        assert session.committed
+
+    def test_disable_during_pending_reconfigure_proves_with_active_secret(self) -> None:
+        user, membership, _ = make_user()
+        setting = seeded_setting(True)
+        setting.pending_secret = pyotp.random_base32()
+        setting.pending_recovery_hashes = [hash_reset_pin("new-code")]
+        session = FakeEnrollSession(setting)
+
+        asyncio.run(
+            disable_mfa(session, make_principal(user, membership), pyotp.TOTP(setting.secret).now())
+        )
 
         assert setting in session.deleted
         assert session.committed
