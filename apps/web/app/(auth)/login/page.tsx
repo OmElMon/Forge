@@ -19,8 +19,11 @@ function signInErrorMessage(payload: { error?: string } | null, status: number) 
 }
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<{ mfa_session: string } | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -28,6 +31,18 @@ export default function LoginPage() {
   useEffect(() => {
     const held = sessionStorage.getItem(SESSION_KEY);
     if (held) setChallenge({ mfa_session: held });
+
+    const url = new URL(window.location.href);
+    const queryEmail = url.searchParams.get("email");
+    const queryPassword = url.searchParams.get("password");
+    if (queryEmail) setEmail(queryEmail.trim().toLowerCase());
+    if (queryPassword) {
+      setNotice("For your security, CrewPilot OS ignores passwords placed in the URL. Type your password into the field below.");
+    }
+    if (queryEmail || queryPassword) {
+      url.searchParams.delete("password");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   }, []);
 
   function startChallenge(mfaSession: string) {
@@ -43,12 +58,17 @@ export default function LoginPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      setError("Enter your email and password.");
+      return;
+    }
     setSubmitting(true);
-    const form = new FormData(event.currentTarget);
 
     try {
       const response = await fetch("/api/auth/login", {
-        body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -170,20 +190,39 @@ export default function LoginPage() {
             <form onSubmit={submit} className="mt-8 space-y-5">
               <label className="block text-sm font-medium">
                 Email address
-                <input name="email" type="email" autoComplete="email" required className="mt-2 h-11 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="you@company.com" />
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-lg border px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  placeholder="you@company.com"
+                />
               </label>
               <label className="block text-sm font-medium">
                 Password
                 <div className="relative mt-2">
-                  <input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required className="h-11 w-full rounded-lg border px-3 pr-11 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="••••••••••••" />
+                  <input
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="h-11 w-full rounded-lg border px-3 pr-11 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                    placeholder="Type your password"
+                  />
                   <button type="button" aria-label="Toggle password visibility" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
               </label>
+              {notice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{notice}</p>}
               {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
               <div className="flex items-center justify-between">
-                <button disabled={submitting} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+                <button disabled={submitting || !email.trim() || !password} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
                 </button>
                 <Link href="/forgot-password" className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700">
