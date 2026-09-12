@@ -188,7 +188,6 @@ const emptyAttentionSummary: AttentionSummary = {
 const ONBOARDING_HIDDEN_KEY = "crewpilot:onboarding:hidden";
 const ONBOARDING_FOLLOWUPS_REVIEWED_KEY = "crewpilot:onboarding:followups_reviewed";
 const DASHBOARD_REQUEST_TIMEOUT_MS = 9000;
-const DASHBOARD_LOADING_WATCHDOG_MS = 11000;
 
 type OnboardingStep = {
   key: string;
@@ -245,7 +244,7 @@ export default function DashboardPage() {
   const [followups, setFollowups] = useState<FollowupTask[]>([]);
   const [intakeRecords, setIntakeRecords] = useState<IntakeRecord[]>([]);
   const [principal, setPrincipal] = useState<Principal | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [onboardingHidden, setOnboardingHidden] = useState(false);
   const [followupsReviewed, setFollowupsReviewed] = useState(false);
@@ -257,7 +256,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function loadData() {
-      setLoading(true);
       setError("");
 
       try {
@@ -307,17 +305,6 @@ export default function DashboardPage() {
 
     void loadData();
   }, []);
-
-  useEffect(() => {
-    if (!loading) return;
-
-    const timer = window.setTimeout(() => {
-      setError("CrewPilot OS is taking too long to load dashboard data. The page is usable now; refresh in a moment for the latest numbers.");
-      setLoading(false);
-    }, DASHBOARD_LOADING_WATCHDOG_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [loading]);
 
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
