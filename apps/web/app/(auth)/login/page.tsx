@@ -35,12 +35,15 @@ export default function LoginPage() {
     const url = new URL(window.location.href);
     const queryEmail = url.searchParams.get("email");
     const queryPassword = url.searchParams.get("password");
+    const queryError = url.searchParams.get("error");
     if (queryEmail) setEmail(queryEmail.trim().toLowerCase());
+    if (queryError) setError(queryError);
     if (queryPassword) {
       setNotice("For your security, CrewPilot OS ignores passwords placed in the URL. Type your password into the field below.");
     }
-    if (queryEmail || queryPassword) {
+    if (queryEmail || queryPassword || queryError) {
       url.searchParams.delete("password");
+      url.searchParams.delete("error");
       window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, []);
@@ -192,7 +195,7 @@ export default function LoginPage() {
               </form>
             </div>
           ) : (
-            <form onSubmit={submit} className="mt-8 space-y-5">
+            <form action="/api/auth/login" method="post" onSubmit={submit} className="mt-8 space-y-5">
               <label className="block text-sm font-medium">
                 Email address
                 <input
