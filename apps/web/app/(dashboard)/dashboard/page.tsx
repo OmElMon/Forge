@@ -187,6 +187,7 @@ const emptyAttentionSummary: AttentionSummary = {
 
 const ONBOARDING_HIDDEN_KEY = "crewpilot:onboarding:hidden";
 const ONBOARDING_FOLLOWUPS_REVIEWED_KEY = "crewpilot:onboarding:followups_reviewed";
+const DASHBOARD_REQUEST_TIMEOUT_MS = 9000;
 
 type OnboardingStep = {
   key: string;
@@ -196,6 +197,43 @@ type OnboardingStep = {
   hrefLabel: string;
   done: boolean;
 };
+
+type DashboardApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+async function fetchDashboardApi<T>(path: string, fallback: T): Promise<DashboardApiResult<T>> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), DASHBOARD_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(path, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const payload = await readApiResponse(response);
+
+    if (!response.ok) {
+      const message =
+        payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+          ? payload.error
+          : "The operations service did not return data.";
+      return { error: message, ok: false };
+    }
+
+    return { data: (payload ?? fallback) as T, ok: true };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return {
+      error: timedOut
+        ? "CrewPilot OS is still waking up some dashboard data. Refresh in a moment."
+        : "CrewPilot OS could not reach part of the operations service.",
+      ok: false,
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -220,55 +258,46 @@ export default function DashboardPage() {
     async function loadData() {
       setLoading(true);
       setError("");
-      try {
-        const [
-          customersResponse,
-          jobsResponse,
-          invoicesResponse,
-          techniciansResponse,
-          attentionResponse,
-          followupsResponse,
-          intakeResponse,
-        ] = await Promise.all([
-          fetch("/api/customers", { cache: "no-store" }),
-          fetch("/api/jobs", { cache: "no-store" }),
-          fetch("/api/invoices", { cache: "no-store" }),
-          fetch("/api/technicians", { cache: "no-store" }),
-          fetch("/api/attention?limit=6", { cache: "no-store" }),
-          fetch("/api/followups", { cache: "no-store" }),
-          fetch("/api/intake", { cache: "no-store" }),
+
+      const [customersResult, jobsResult, invoicesResult, techniciansResult, attentionResult, followupsResult, intakeResult] =
+        await Promise.all([
+          fetchDashboardApi<Customer[]>("/api/customers", []),
+          fetchDashboardApi<Job[]>("/api/jobs", []),
+          fetchDashboardApi<Invoice[]>("/api/invoices", []),
+          fetchDashboardApi<Technician[]>("/api/technicians", []),
+          fetchDashboardApi<AttentionSummary>("/api/attention?limit=6", emptyAttentionSummary),
+          fetchDashboardApi<FollowupTask[]>("/api/followups", []),
+          fetchDashboardApi<IntakeRecord[]>("/api/intake", []),
         ]);
-        const customersPayload = await readApiResponse(customersResponse);
-        const jobsPayload = await readApiResponse(jobsResponse);
-        const invoicesPayload = await readApiResponse(invoicesResponse);
-        const techniciansPayload = await readApiResponse(techniciansResponse);
-        const attentionPayload = await readApiResponse(attentionResponse);
-        const followupsPayload = await readApiResponse(followupsResponse);
-        const intakePayload = await readApiResponse(intakeResponse);
-        if (
-          !customersResponse.ok ||
-          !jobsResponse.ok ||
-          !invoicesResponse.ok ||
-          !techniciansResponse.ok ||
-          !attentionResponse.ok ||
-          !followupsResponse.ok ||
-          !intakeResponse.ok
-        ) {
-          setError("CrewPilot OS could not load the latest operations data.");
-          return;
-        }
-        setCustomers(customersPayload as Customer[]);
-        setJobs(jobsPayload as Job[]);
-        setInvoices(invoicesPayload as Invoice[]);
-        setTechnicians(techniciansPayload as Technician[]);
-        setAttentionSummary(attentionPayload as AttentionSummary);
-        setFollowups(followupsPayload as FollowupTask[]);
-        setIntakeRecords(intakePayload as IntakeRecord[]);
-      } catch {
-        setError("CrewPilot OS could not reach the operations service.");
-      } finally {
-        setLoading(false);
+
+      setCustomers(customersResult.ok ? customersResult.data : []);
+      setJobs(jobsResult.ok ? jobsResult.data : []);
+      setInvoices(invoicesResult.ok ? invoicesResult.data : []);
+      setTechnicians(techniciansResult.ok ? techniciansResult.data : []);
+      setAttentionSummary(attentionResult.ok ? attentionResult.data : emptyAttentionSummary);
+      setFollowups(followupsResult.ok ? followupsResult.data : []);
+      setIntakeRecords(intakeResult.ok ? intakeResult.data : []);
+
+      const failedResults = [
+        customersResult,
+        jobsResult,
+        invoicesResult,
+        techniciansResult,
+        attentionResult,
+        followupsResult,
+        intakeResult,
+      ].filter((result) => !result.ok);
+
+      if (failedResults.length > 0) {
+        const timedOut = failedResults.some((result) => !result.ok && result.error.includes("waking up"));
+        setError(
+          timedOut
+            ? "CrewPilot OS is still waking up some dashboard data. The page is usable now; refresh in a moment for the latest numbers."
+            : "CrewPilot OS could not load every dashboard widget. The page is showing the data it could reach.",
+        );
       }
+
+      setLoading(false);
     }
 
     void loadData();
