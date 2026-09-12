@@ -59,16 +59,21 @@ export default function LoginPage() {
     event.preventDefault();
     setError("");
     setNotice("");
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
+    const form = new FormData(event.currentTarget);
+    const submittedEmail = String(form.get("email") ?? email);
+    const submittedPassword = String(form.get("password") ?? password);
+    const normalizedEmail = submittedEmail.trim().toLowerCase();
+    if (!normalizedEmail || !submittedPassword) {
       setError("Enter your email and password.");
       return;
     }
+    setEmail(normalizedEmail);
+    setPassword(submittedPassword);
     setSubmitting(true);
 
     try {
       const response = await fetch("/api/auth/login", {
-        body: JSON.stringify({ email: normalizedEmail, password }),
+        body: JSON.stringify({ email: normalizedEmail, password: submittedPassword }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -222,7 +227,7 @@ export default function LoginPage() {
               {notice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{notice}</p>}
               {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
               <div className="flex items-center justify-between">
-                <button disabled={submitting || !email.trim() || !password} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+                <button disabled={submitting} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
                 </button>
                 <Link href="/forgot-password" className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700">
