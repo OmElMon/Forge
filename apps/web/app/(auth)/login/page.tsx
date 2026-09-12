@@ -1,16 +1,14 @@
 "use client";
 
-import { Suspense, type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/logo";
 
 const SESSION_KEY = "crewpilot.mfa_session";
 
-function LoginPageContent() {
-  const searchParams = useSearchParams();
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,7 +17,6 @@ function LoginPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<{ mfa_session: string } | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
-  const visibleError = error || searchParams.get("error") || "";
 
   useEffect(() => {
     const held = sessionStorage.getItem(SESSION_KEY);
@@ -34,9 +31,8 @@ function LoginPageContent() {
     if (queryPassword) {
       setNotice("For your security, CrewPilot OS ignores passwords placed in the URL. Type your password into the field below.");
     }
-    if (queryEmail || queryPassword || queryError) {
+    if (queryEmail || queryPassword) {
       url.searchParams.delete("password");
-      url.searchParams.delete("error");
       window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, []);
@@ -135,7 +131,7 @@ function LoginPageContent() {
                     placeholder="6-digit code"
                   />
                 </label>
-                {visibleError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{visibleError}</p>}
+                {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
                 <button
                   disabled={verifySubmitting}
                   className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -185,7 +181,7 @@ function LoginPageContent() {
                 </div>
               </label>
               {notice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{notice}</p>}
-              {visibleError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{visibleError}</p>}
+              {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
               <div className="flex items-center justify-between">
                 <button disabled={submitting} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
@@ -221,13 +217,5 @@ function LoginPageContent() {
         <p className="relative text-xs text-gray-600">© 2026 CrewPilot OS</p>
       </section>
     </main>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginPageContent />
-    </Suspense>
   );
 }
