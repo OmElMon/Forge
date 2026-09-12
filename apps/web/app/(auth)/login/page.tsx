@@ -2,7 +2,6 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/logo";
@@ -20,7 +19,6 @@ function signInErrorMessage(payload: { error?: string } | null, status: number) 
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -74,8 +72,7 @@ export default function LoginPage() {
         );
         return;
       }
-      router.replace("/dashboard");
-      router.refresh();
+      window.location.assign("/dashboard");
     } catch {
       setError("CrewPilot OS could not reach the authentication service.");
     } finally {
@@ -102,8 +99,7 @@ export default function LoginPage() {
         return;
       }
       sessionStorage.removeItem(SESSION_KEY);
-      router.replace("/dashboard");
-      router.refresh();
+      window.location.assign("/dashboard");
     } catch {
       setError("CrewPilot OS could not reach the authentication service.");
     } finally {
