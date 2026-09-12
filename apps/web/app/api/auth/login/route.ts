@@ -27,12 +27,16 @@ export async function POST(request: NextRequest) {
     return failure("Email and password are required.");
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
     const upstream = await fetch(apiUrl("/auth/login"), {
       body: JSON.stringify({ email, password: payload.password }),
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       method: "POST",
+      signal: controller.signal,
     });
     if (!upstream.ok) {
       return failure(await apiError(upstream), upstream.status);
@@ -45,7 +49,15 @@ export async function POST(request: NextRequest) {
     const response = wantsJson ? NextResponse.json({ ok: true }) : NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 });
     setSessionCookies(response, result);
     return response;
-  } catch {
-    return failure("Unable to reach the authentication service.", 503);
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return failure(
+      timedOut
+        ? "CrewPilot OS is waking up the authentication service. Wait a few seconds, then try again."
+        : "Unable to reach the authentication service.",
+      503
+    );
+  } finally {
+    clearTimeout(timeout);
   }
 }
