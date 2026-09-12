@@ -67,6 +67,13 @@ export default function LoginPage() {
         startChallenge(payload.mfa_session);
         return;
       }
+      const session = await fetch("/api/auth/session", { cache: "no-store" });
+      if (!session.ok) {
+        setError(
+          "Your password was accepted, but this browser did not keep the sign-in session. Clear cookies for CrewPilot OS or try an incognito window."
+        );
+        return;
+      }
       router.replace("/dashboard");
       router.refresh();
     } catch {
