@@ -8,16 +8,6 @@ import { Logo } from "@/components/logo";
 
 const SESSION_KEY = "crewpilot.mfa_session";
 
-function signInErrorMessage(payload: { error?: string } | null, status: number) {
-  if (payload?.error) return payload.error;
-  if (status === 400) return "Enter your email and password.";
-  if (status === 401) return "Invalid email or password.";
-  if (status === 403) return "This account needs attention before you can sign in. Check email verification or workspace access.";
-  if (status === 429) return "Too many sign-in attempts. Wait a few minutes, then try again.";
-  if (status >= 500) return "CrewPilot OS could not reach the authentication service. Try again in a minute.";
-  return "Unable to sign in.";
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,18 +38,14 @@ export default function LoginPage() {
     }
   }, []);
 
-  function startChallenge(mfaSession: string) {
-    sessionStorage.setItem(SESSION_KEY, mfaSession);
-    setChallenge({ mfa_session: mfaSession });
-  }
-
   function clearChallenge() {
     sessionStorage.removeItem(SESSION_KEY);
     setChallenge(null);
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setError("");
     setNotice("");
     const form = new FormData(event.currentTarget);
@@ -73,39 +59,7 @@ export default function LoginPage() {
     setEmail(normalizedEmail);
     setPassword(submittedPassword);
     setSubmitting(true);
-
-    try {
-      const response = await fetch("/api/auth/login", {
-        body: JSON.stringify({ email: normalizedEmail, password: submittedPassword }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        mfa_required?: boolean;
-        mfa_session?: string;
-      } | null;
-      if (!response.ok) {
-        setError(signInErrorMessage(payload, response.status));
-        return;
-      }
-      if (payload?.mfa_required && payload.mfa_session) {
-        startChallenge(payload.mfa_session);
-        return;
-      }
-      const session = await fetch("/api/auth/session", { cache: "no-store" });
-      if (!session.ok) {
-        setError(
-          "Your password was accepted, but this browser did not keep the sign-in session. Clear cookies for CrewPilot OS or try an incognito window."
-        );
-        return;
-      }
-      window.location.assign("/dashboard");
-    } catch {
-      setError("CrewPilot OS could not reach the authentication service.");
-    } finally {
-      setSubmitting(false);
-    }
+    formElement.submit();
   }
 
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
