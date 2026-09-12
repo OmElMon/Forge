@@ -1,14 +1,16 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { Suspense, type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/logo";
 
 const SESSION_KEY = "crewpilot.mfa_session";
 
-export default function LoginPage() {
+function LoginPageContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +19,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<{ mfa_session: string } | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
+  const visibleError = error || searchParams.get("error") || "";
 
   useEffect(() => {
     const held = sessionStorage.getItem(SESSION_KEY);
@@ -132,7 +135,7 @@ export default function LoginPage() {
                     placeholder="6-digit code"
                   />
                 </label>
-                {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+                {visibleError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{visibleError}</p>}
                 <button
                   disabled={verifySubmitting}
                   className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -182,7 +185,7 @@ export default function LoginPage() {
                 </div>
               </label>
               {notice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{notice}</p>}
-              {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+              {visibleError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{visibleError}</p>}
               <div className="flex items-center justify-between">
                 <button disabled={submitting} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <>Sign in <ArrowRight className="size-4" /></>}
@@ -218,5 +221,13 @@ export default function LoginPage() {
         <p className="relative text-xs text-gray-600">© 2026 CrewPilot OS</p>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageContent />
+    </Suspense>
   );
 }
