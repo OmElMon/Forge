@@ -8,11 +8,16 @@ import { Logo } from "@/components/logo";
 
 const SESSION_KEY = "crewpilot.mfa_session";
 
+function readLoginParam(name: string) {
+  if (typeof window === "undefined") return "";
+  return new URL(window.location.href).searchParams.get(name) ?? "";
+}
+
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => readLoginParam("email").trim().toLowerCase());
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => readLoginParam("error"));
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<{ mfa_session: string } | null>(null);

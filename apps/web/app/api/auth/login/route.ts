@@ -11,10 +11,11 @@ export async function POST(request: NextRequest) {
     ? await request.json().catch(() => null)
     : Object.fromEntries((await request.formData().catch(() => new FormData())).entries());
 
-  function failure(error: string, status = 400) {
+  function failure(error: string, status = 400, attemptedEmail?: string) {
     if (wantsJson) return NextResponse.json({ error }, { status });
     const url = new URL("/login", request.url);
     url.searchParams.set("error", error);
+    if (attemptedEmail) url.searchParams.set("email", attemptedEmail);
     return NextResponse.redirect(url, { status: 303 });
   }
 
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const email = payload.email.trim().toLowerCase();
   if (!email || !payload.password) {
-    return failure("Email and password are required.");
+    return failure("Email and password are required.", 400, email);
   }
 
   const controller = new AbortController();
@@ -39,11 +40,11 @@ export async function POST(request: NextRequest) {
       signal: controller.signal,
     });
     if (!upstream.ok) {
-      return failure(await apiError(upstream), upstream.status);
+      return failure(await apiError(upstream), upstream.status, email);
     }
     const result = (await upstream.json()) as TokenPair & { mfa_required?: boolean; mfa_session?: string };
     if (result.mfa_required) {
-      if (!wantsJson) return failure("Two-factor authentication requires the interactive sign-in form.", 403);
+      if (!wantsJson) return failure("Two-factor authentication requires the interactive sign-in form.", 403, email);
       return NextResponse.json({ mfa_required: true, mfa_session: result.mfa_session ?? null });
     }
     const response = wantsJson ? NextResponse.json({ ok: true }) : NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 });
@@ -55,7 +56,8 @@ export async function POST(request: NextRequest) {
       timedOut
         ? "CrewPilot OS is waking up the authentication service. Wait a few seconds, then try again."
         : "Unable to reach the authentication service.",
-      503
+      503,
+      email
     );
   } finally {
     clearTimeout(timeout);
