@@ -10,9 +10,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
   }
 
+  const email = payload.email.trim().toLowerCase();
+  if (!email || !payload.password) {
+    return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+  }
+
   try {
     const upstream = await fetch(apiUrl("/auth/login"), {
-      body: JSON.stringify({ email: payload.email, password: payload.password }),
+      body: JSON.stringify({ email, password: payload.password }),
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       method: "POST",

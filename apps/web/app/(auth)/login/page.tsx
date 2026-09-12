@@ -9,6 +9,16 @@ import { Logo } from "@/components/logo";
 
 const SESSION_KEY = "crewpilot.mfa_session";
 
+function signInErrorMessage(payload: { error?: string } | null, status: number) {
+  if (payload?.error) return payload.error;
+  if (status === 400) return "Enter your email and password.";
+  if (status === 401) return "Invalid email or password.";
+  if (status === 403) return "This account needs attention before you can sign in. Check email verification or workspace access.";
+  if (status === 429) return "Too many sign-in attempts. Wait a few minutes, then try again.";
+  if (status >= 500) return "CrewPilot OS could not reach the authentication service. Try again in a minute.";
+  return "Unable to sign in.";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -44,16 +54,16 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const payload = (await response.json()) as {
+      const payload = (await response.json().catch(() => null)) as {
         error?: string;
         mfa_required?: boolean;
         mfa_session?: string;
-      };
+      } | null;
       if (!response.ok) {
-        setError(payload.error ?? "Unable to sign in.");
+        setError(signInErrorMessage(payload, response.status));
         return;
       }
-      if (payload.mfa_required && payload.mfa_session) {
+      if (payload?.mfa_required && payload.mfa_session) {
         startChallenge(payload.mfa_session);
         return;
       }
