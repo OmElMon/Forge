@@ -188,6 +188,7 @@ const emptyAttentionSummary: AttentionSummary = {
 const ONBOARDING_HIDDEN_KEY = "crewpilot:onboarding:hidden";
 const ONBOARDING_FOLLOWUPS_REVIEWED_KEY = "crewpilot:onboarding:followups_reviewed";
 const DASHBOARD_REQUEST_TIMEOUT_MS = 9000;
+const DASHBOARD_LOADING_WATCHDOG_MS = 11000;
 
 type OnboardingStep = {
   key: string;
@@ -259,49 +260,64 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
 
-      const [customersResult, jobsResult, invoicesResult, techniciansResult, attentionResult, followupsResult, intakeResult] =
-        await Promise.all([
-          fetchDashboardApi<Customer[]>("/api/customers", []),
-          fetchDashboardApi<Job[]>("/api/jobs", []),
-          fetchDashboardApi<Invoice[]>("/api/invoices", []),
-          fetchDashboardApi<Technician[]>("/api/technicians", []),
-          fetchDashboardApi<AttentionSummary>("/api/attention?limit=6", emptyAttentionSummary),
-          fetchDashboardApi<FollowupTask[]>("/api/followups", []),
-          fetchDashboardApi<IntakeRecord[]>("/api/intake", []),
-        ]);
+      try {
+        const [customersResult, jobsResult, invoicesResult, techniciansResult, attentionResult, followupsResult, intakeResult] =
+          await Promise.all([
+            fetchDashboardApi<Customer[]>("/api/customers", []),
+            fetchDashboardApi<Job[]>("/api/jobs", []),
+            fetchDashboardApi<Invoice[]>("/api/invoices", []),
+            fetchDashboardApi<Technician[]>("/api/technicians", []),
+            fetchDashboardApi<AttentionSummary>("/api/attention?limit=6", emptyAttentionSummary),
+            fetchDashboardApi<FollowupTask[]>("/api/followups", []),
+            fetchDashboardApi<IntakeRecord[]>("/api/intake", []),
+          ]);
 
-      setCustomers(customersResult.ok ? customersResult.data : []);
-      setJobs(jobsResult.ok ? jobsResult.data : []);
-      setInvoices(invoicesResult.ok ? invoicesResult.data : []);
-      setTechnicians(techniciansResult.ok ? techniciansResult.data : []);
-      setAttentionSummary(attentionResult.ok ? attentionResult.data : emptyAttentionSummary);
-      setFollowups(followupsResult.ok ? followupsResult.data : []);
-      setIntakeRecords(intakeResult.ok ? intakeResult.data : []);
+        setCustomers(customersResult.ok ? customersResult.data : []);
+        setJobs(jobsResult.ok ? jobsResult.data : []);
+        setInvoices(invoicesResult.ok ? invoicesResult.data : []);
+        setTechnicians(techniciansResult.ok ? techniciansResult.data : []);
+        setAttentionSummary(attentionResult.ok ? attentionResult.data : emptyAttentionSummary);
+        setFollowups(followupsResult.ok ? followupsResult.data : []);
+        setIntakeRecords(intakeResult.ok ? intakeResult.data : []);
 
-      const failedResults = [
-        customersResult,
-        jobsResult,
-        invoicesResult,
-        techniciansResult,
-        attentionResult,
-        followupsResult,
-        intakeResult,
-      ].filter((result) => !result.ok);
+        const failedResults = [
+          customersResult,
+          jobsResult,
+          invoicesResult,
+          techniciansResult,
+          attentionResult,
+          followupsResult,
+          intakeResult,
+        ].filter((result) => !result.ok);
 
-      if (failedResults.length > 0) {
-        const timedOut = failedResults.some((result) => !result.ok && result.error.includes("waking up"));
-        setError(
-          timedOut
-            ? "CrewPilot OS is still waking up some dashboard data. The page is usable now; refresh in a moment for the latest numbers."
-            : "CrewPilot OS could not load every dashboard widget. The page is showing the data it could reach.",
-        );
+        if (failedResults.length > 0) {
+          const timedOut = failedResults.some((result) => !result.ok && result.error.includes("waking up"));
+          setError(
+            timedOut
+              ? "CrewPilot OS is still waking up some dashboard data. The page is usable now; refresh in a moment for the latest numbers."
+              : "CrewPilot OS could not load every dashboard widget. The page is showing the data it could reach.",
+          );
+        }
+      } catch {
+        setError("CrewPilot OS could not load dashboard data. The page is showing safe defaults.");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     }
 
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (!loading) return;
+
+    const timer = window.setTimeout(() => {
+      setError("CrewPilot OS is taking too long to load dashboard data. The page is usable now; refresh in a moment for the latest numbers.");
+      setLoading(false);
+    }, DASHBOARD_LOADING_WATCHDOG_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
