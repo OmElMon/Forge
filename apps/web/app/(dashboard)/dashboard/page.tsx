@@ -13,7 +13,6 @@ import {
   Clock3,
   FileText,
   Inbox,
-  LoaderCircle,
   Plus,
   ReceiptText,
   Sparkles,
@@ -244,7 +243,6 @@ export default function DashboardPage() {
   const [followups, setFollowups] = useState<FollowupTask[]>([]);
   const [intakeRecords, setIntakeRecords] = useState<IntakeRecord[]>([]);
   const [principal, setPrincipal] = useState<Principal | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [onboardingHidden, setOnboardingHidden] = useState(false);
   const [followupsReviewed, setFollowupsReviewed] = useState(false);
@@ -298,8 +296,6 @@ export default function DashboardPage() {
         }
       } catch {
         setError("CrewPilot OS could not load dashboard data. The page is showing safe defaults.");
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -429,7 +425,7 @@ export default function DashboardPage() {
 
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
 
-      {!loading && !onboardingHidden && onboardingComplete ? (
+      {!onboardingHidden && onboardingComplete ? (
         <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-panel">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-4">
@@ -454,7 +450,7 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {!loading && !onboardingHidden && !onboardingComplete ? (
+      {!onboardingHidden && !onboardingComplete ? (
         <section className="mt-6 rounded-xl border bg-white p-5 shadow-panel">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -521,8 +517,7 @@ export default function DashboardPage() {
           <article key={metric.label} className="rounded-xl border bg-white p-5 shadow-panel">
             <p className="text-sm font-medium text-gray-500">{metric.label}</p>
             <div className="mt-3 flex items-end justify-between gap-2">
-              <p className="text-2xl font-semibold tracking-tight">{loading ? "—" : metric.value}</p>
-              {loading && <LoaderCircle className="size-4 animate-spin text-gray-400" />}
+              <p className="text-2xl font-semibold tracking-tight">{metric.value}</p>
             </div>
             <p className="mt-1 text-xs text-gray-400">{metric.note}</p>
           </article>
@@ -535,17 +530,12 @@ export default function DashboardPage() {
             <div>
               <h2 className="font-semibold">Today’s schedule</h2>
               <p className="mt-0.5 text-xs text-gray-500">
-                {loading ? "Loading…" : `${todayJobs.length} jobs · ${activeTechnicians} technicians`}
+                {todayJobs.length} jobs · {activeTechnicians} technicians
               </p>
             </div>
             <Link className="text-sm font-medium text-orange-600" href="/dashboard/schedule">View dispatch board</Link>
           </div>
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading schedule…
-            </div>
-          ) : todayJobs.length === 0 ? (
+          {todayJobs.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <BriefcaseBusiness className="size-10 text-orange-600" />
               <h3 className="mt-3 font-semibold">Nothing scheduled today</h3>
@@ -613,23 +603,23 @@ export default function DashboardPage() {
               <div className="rounded-xl bg-violet-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Open</p>
                 <p className="mt-1 text-2xl font-semibold text-gray-950">
-                  {loading ? "—" : openFollowups.length}
+                  {openFollowups.length}
                 </p>
               </div>
               <div className="rounded-xl bg-amber-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Due today</p>
                 <p className="mt-1 text-2xl font-semibold text-gray-950">
-                  {loading ? "—" : followupsDueToday.length}
+                  {followupsDueToday.length}
                 </p>
               </div>
               <div className="rounded-xl bg-rose-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Overdue</p>
                 <p className="mt-1 text-2xl font-semibold text-gray-950">
-                  {loading ? "—" : followupsOverdue.length}
+                  {followupsOverdue.length}
                 </p>
               </div>
             </div>
-            {!loading && openFollowups.length > 0 ? (
+            {openFollowups.length > 0 ? (
               <Link
                 href="/dashboard/followups"
                 className="mt-4 flex items-center justify-between rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-200 hover:bg-violet-50"
@@ -661,19 +651,17 @@ export default function DashboardPage() {
               <div className="rounded-xl bg-amber-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Need response</p>
                 <p className="mt-1 text-2xl font-semibold text-gray-950">
-                  {loading ? "—" : intakeNeedsResponse.length}
+                  {intakeNeedsResponse.length}
                 </p>
               </div>
               <div className="rounded-xl bg-emerald-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Converted</p>
                 <p className="mt-1 text-2xl font-semibold text-gray-950">
-                  {loading
-                    ? "—"
-                    : intakeRecords.filter((record) => record.status === "converted").length}
+                  {intakeRecords.filter((record) => record.status === "converted").length}
                 </p>
               </div>
             </div>
-            {!loading && intakeNeedsResponse.length > 0 ? (
+            {intakeNeedsResponse.length > 0 ? (
               <Link
                 href="/dashboard/intake"
                 className="mt-4 flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 transition hover:border-amber-200 hover:bg-amber-50"
@@ -704,7 +692,7 @@ export default function DashboardPage() {
             <div className="mt-4 rounded-xl bg-orange-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">At-risk revenue</p>
               <p className="mt-1 text-2xl font-semibold text-gray-950">
-                {loading ? "—" : formatMoney(attentionSummary.revenue_at_risk_cents)}
+                {formatMoney(attentionSummary.revenue_at_risk_cents)}
               </p>
               <p className="mt-1 text-xs text-orange-800">
                 {formatMoney(attentionSummary.open_estimate_cents)} estimates ·{" "}
@@ -712,7 +700,7 @@ export default function DashboardPage() {
                 {attentionSummary.overdue_invoice_count} overdue
               </p>
             </div>
-            {!loading && attentionSummary.completed_uninvoiced_job_count > 0 ? (
+            {attentionSummary.completed_uninvoiced_job_count > 0 ? (
               <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
                 {attentionSummary.completed_uninvoiced_job_count} completed job
                 {attentionSummary.completed_uninvoiced_job_count === 1 ? "" : "s"} ready to invoice.
@@ -720,12 +708,7 @@ export default function DashboardPage() {
             ) : null}
 
             <div className="mt-4 space-y-3">
-              {loading ? (
-                <div className="flex h-32 items-center justify-center text-sm text-gray-500">
-                  <LoaderCircle className="mr-2 size-4 animate-spin" />
-                  Building attention queue…
-                </div>
-              ) : attentionSummary.items.length === 0 ? (
+              {attentionSummary.items.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-4 text-sm text-gray-500">
                   Clean board. No open revenue or scheduling issues need attention right now.
                 </div>
