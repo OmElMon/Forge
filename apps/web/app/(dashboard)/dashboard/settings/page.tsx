@@ -98,7 +98,6 @@ function errorMessage(payload: unknown, fallback: string) {
 export default function SettingsPage() {
   const [profile, setProfile] = useState<CompanyRead | null>(null);
   const [admin, setAdmin] = useState<AdminOverview | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [suspending, setSuspending] = useState(false);
   const [error, setError] = useState("");
@@ -112,7 +111,6 @@ export default function SettingsPage() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
       setError("");
       try {
         const profileResponse = await fetch("/api/companies/me", { cache: "no-store" });
@@ -137,8 +135,6 @@ export default function SettingsPage() {
         }
       } catch {
         if (!cancelled) setError("CrewPilot OS could not load workspace settings.");
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
     void load();
@@ -233,12 +229,7 @@ export default function SettingsPage() {
         </p>
       )}
 
-      {loading ? (
-        <div className="mt-8 flex h-48 items-center justify-center text-gray-500">
-          <LoaderCircle className="mr-2 size-4 animate-spin" />Loading settings…
-        </div>
-      ) : (
-        <form onSubmit={saveSettings} className="mt-6 space-y-6">
+      <form onSubmit={saveSettings} className="mt-6 space-y-6">
           <section className="overflow-hidden rounded-xl border bg-white shadow-panel">
             <div className="flex items-center gap-3 border-b px-5 py-4">
               <span className="grid size-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
@@ -344,9 +335,8 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
-      )}
 
-      {!loading && <MfaSection />}
+      <MfaSection />
 
       {admin && (
         <section className="mt-8 overflow-hidden rounded-xl border bg-white shadow-panel">

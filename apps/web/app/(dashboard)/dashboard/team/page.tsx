@@ -78,7 +78,6 @@ function formatDate(value: string) {
 export default function TeamPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [members, setMembers] = useState<Membership[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -86,7 +85,6 @@ export default function TeamPage() {
   const [query, setQuery] = useState("");
 
   async function loadTeam() {
-    setLoading(true);
     setError("");
     try {
       const [invitesResponse, membersResponse] = await Promise.all([
@@ -107,8 +105,6 @@ export default function TeamPage() {
       setMembers(membersPayload as Membership[]);
     } catch {
       setError("CrewPilot OS could not load your team.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -221,11 +217,7 @@ export default function TeamPage() {
             <CheckCircle2 className="size-3.5" /> Membership is scoped to this workspace
           </span>
         </div>
-        {loading ? (
-          <div className="flex h-40 items-center justify-center text-gray-500">
-            <LoaderCircle className="mr-2 size-4 animate-spin" />Loading members…
-          </div>
-        ) : members.length === 0 ? (
+        {members.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center px-6 text-center">
             <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
               <UsersRound className="size-6" />
@@ -273,11 +265,7 @@ export default function TeamPage() {
             <UserPlus className="size-3.5" /> Invite someone
           </button>
         </div>
-        {loading ? (
-          <div className="flex h-40 items-center justify-center text-gray-500">
-            <LoaderCircle className="mr-2 size-4 animate-spin" />Loading invites…
-          </div>
-        ) : visibleInvites.length === 0 ? (
+        {visibleInvites.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center px-6 text-center">
             <div className="grid size-12 place-items-center rounded-full bg-blue-50 text-blue-600">
               <Send className="size-6" />

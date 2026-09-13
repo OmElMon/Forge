@@ -166,7 +166,6 @@ export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
@@ -180,7 +179,6 @@ export default function TechniciansPage() {
   );
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [techniciansResponse, customersResponse, jobsResponse] = await Promise.all([
@@ -210,8 +208,6 @@ export default function TechniciansPage() {
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load technicians.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -386,9 +382,7 @@ export default function TechniciansPage() {
               <p className="mt-0.5 text-xs text-gray-500">{technicians.length} total technicians</p>
             </div>
           </div>
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500"><LoaderCircle className="mr-2 size-4 animate-spin" />Loading technicians…</div>
-          ) : filteredTechnicians.length === 0 ? (
+          {filteredTechnicians.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600"><Wrench className="size-6" /></div>
               <h3 className="mt-4 font-semibold">No technicians yet</h3>

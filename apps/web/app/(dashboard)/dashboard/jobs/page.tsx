@@ -148,7 +148,6 @@ export default function JobsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
@@ -169,7 +168,6 @@ export default function JobsPage() {
   );
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
@@ -199,8 +197,6 @@ export default function JobsPage() {
       setSelectedId((current) => current ?? loadedJobs[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load jobs.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -447,12 +443,7 @@ export default function JobsPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading jobs…
-            </div>
-          ) : customers.length === 0 ? (
+          {customers.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
                 <UserRound className="size-6" />

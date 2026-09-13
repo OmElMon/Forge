@@ -8,7 +8,6 @@ import {
   Check,
   CheckCircle2,
   Clock3,
-  LoaderCircle,
   MessageSquareWarning,
   PhoneCall,
   ReceiptText,
@@ -97,8 +96,7 @@ export default function FollowupsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<InvoiceReference[]>([]);
   const [filter, setFilter] = useState<"" | FollowupStatus>("");
-  const [loading, setLoading] = useState(true);
-  const [rulesLoading, setRulesLoading] = useState(true);
+  const [rulesLoading, setRulesLoading] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [togglingRule, setTogglingRule] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -116,7 +114,6 @@ export default function FollowupsPage() {
   );
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [tasksResponse, customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
@@ -143,13 +140,10 @@ export default function FollowupsPage() {
       setInvoices(invoicesPayload as InvoiceReference[]);
     } catch {
       setError("CrewPilot OS could not load follow-ups.");
-    } finally {
-      setLoading(false);
     }
   }
 
   async function loadRules() {
-    setRulesLoading(true);
     setRulesError("");
     try {
       const response = await fetch("/api/followups/rules", { cache: "no-store" });
@@ -325,12 +319,7 @@ export default function FollowupsPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Running the automation pass…
-            </div>
-          ) : filteredTasks.length === 0 ? (
+          {filteredTasks.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
                 <Bell className="size-6" />
@@ -419,10 +408,9 @@ export default function FollowupsPage() {
 
           {rulesError && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{rulesError}</p>}
 
-          {rulesLoading ? (
-            <div className="mt-5 flex items-center justify-center py-8 text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading rules…
+          {rules.length === 0 ? (
+            <div className="mt-5 rounded-xl border border-dashed p-4 text-sm text-gray-500">
+              Automation rules are unavailable right now.
             </div>
           ) : (
             <div className="mt-5 divide-y">

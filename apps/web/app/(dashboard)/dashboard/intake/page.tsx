@@ -125,7 +125,6 @@ export default function IntakePage() {
   const [records, setRecords] = useState<IntakeRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
@@ -146,7 +145,6 @@ export default function IntakePage() {
   );
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [intakeResponse, customersResponse, techniciansResponse] = await Promise.all([
@@ -172,8 +170,6 @@ export default function IntakePage() {
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load intake records.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -416,12 +412,7 @@ export default function IntakePage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading intake records…
-            </div>
-          ) : filteredRecords.length === 0 ? (
+          {filteredRecords.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
                 <Inbox className="size-6" />

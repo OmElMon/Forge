@@ -8,7 +8,6 @@ import {
   BriefcaseBusiness,
   CircleDollarSign,
   FileText,
-  LoaderCircle,
   ReceiptText,
   TrendingUp,
   UsersRound,
@@ -149,12 +148,10 @@ function ConversionCard({
 
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState<AnalyticsSummary>(emptySummary);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadSummary() {
-      setLoading(true);
       setError("");
       try {
         const response = await fetch("/api/analytics/summary", { cache: "no-store" });
@@ -166,8 +163,6 @@ export default function AnalyticsPage() {
         setSummary(payload as AnalyticsSummary);
       } catch {
         setError("CrewPilot OS could not reach the analytics service.");
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -207,13 +202,7 @@ export default function AnalyticsPage() {
           </div>
         ) : null}
 
-        {loading ? (
-          <div className="mt-10 flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
-            <LoaderCircle className="h-5 w-5 animate-spin" />
-            <span>Loading analytics...</span>
-          </div>
-        ) : (
-          <>
+        <>
             <section className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
                 href="/dashboard/invoices"
@@ -293,8 +282,7 @@ export default function AnalyticsPage() {
                 value={String(recoveryGapCount)}
               />
             </section>
-          </>
-        )}
+        </>
       </div>
     </main>
   );

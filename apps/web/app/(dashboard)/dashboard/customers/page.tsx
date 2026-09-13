@@ -229,7 +229,6 @@ export default function CustomersPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -274,7 +273,6 @@ export default function CustomersPage() {
   const openInvoiceCents = customerDetail?.open_invoice_cents ?? selectedUnpaidCents;
 
   async function loadCustomers() {
-    setLoading(true);
     setError("");
     try {
       const [activityResponse, customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
@@ -311,8 +309,6 @@ export default function CustomersPage() {
       setSelectedId((current) => current ?? loaded[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load customers.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -602,12 +598,7 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading customers…
-            </div>
-          ) : filteredCustomers.length === 0 ? (
+          {filteredCustomers.length === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
                 <UserRound className="size-6" />

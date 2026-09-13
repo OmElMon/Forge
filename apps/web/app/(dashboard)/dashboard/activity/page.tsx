@@ -6,7 +6,6 @@ import {
   BellRing,
   BriefcaseBusiness,
   FileText,
-  LoaderCircle,
   ReceiptText,
   ShieldCheck,
   UserRound,
@@ -133,13 +132,11 @@ function formatTime(value: string) {
 
 export default function ActivityPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<string>("");
 
   useEffect(() => {
     async function loadLogs() {
-      setLoading(true);
       setError("");
       try {
         const response = await fetch("/api/audit-logs?limit=200", { cache: "no-store" });
@@ -151,8 +148,6 @@ export default function ActivityPage() {
         setLogs(payload as AuditLog[]);
       } catch {
         setError("CrewPilot OS could not load the activity timeline.");
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -207,21 +202,21 @@ export default function ActivityPage() {
             <p className="text-sm text-gray-500">Events shown</p>
             <Activity className="size-5 text-orange-600" />
           </div>
-          <p className="mt-3 text-2xl font-semibold">{loading ? "—" : filteredLogs.length}</p>
+          <p className="mt-3 text-2xl font-semibold">{filteredLogs.length}</p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-panel">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500">Events today</p>
             <BriefcaseBusiness className="size-5 text-orange-600" />
           </div>
-          <p className="mt-3 text-2xl font-semibold">{loading ? "—" : todayCount}</p>
+          <p className="mt-3 text-2xl font-semibold">{todayCount}</p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-panel">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500">Resource types</p>
             <ShieldCheck className="size-5 text-orange-600" />
           </div>
-          <p className="mt-3 text-2xl font-semibold">{loading ? "—" : resourceTypes.length}</p>
+          <p className="mt-3 text-2xl font-semibold">{resourceTypes.length}</p>
         </div>
       </div>
 
@@ -260,12 +255,7 @@ export default function ActivityPage() {
           )}
         </div>
 
-        {loading ? (
-          <div className="flex h-56 items-center justify-center text-gray-500">
-            <LoaderCircle className="mr-2 size-4 animate-spin" />
-            Loading activity…
-          </div>
-        ) : filteredLogs.length === 0 ? (
+        {filteredLogs.length === 0 ? (
           <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
             <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
               <Activity className="size-6" />

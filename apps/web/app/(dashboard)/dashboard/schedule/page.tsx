@@ -156,7 +156,6 @@ export default function SchedulePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
   const [workflowUpdatingId, setWorkflowUpdatingId] = useState<string | null>(null);
   const [invoiceCreatingId, setInvoiceCreatingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -196,7 +195,6 @@ export default function SchedulePage() {
   }
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
@@ -237,8 +235,6 @@ export default function SchedulePage() {
       }
     } catch {
       setError("CrewPilot OS could not load the schedule.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -438,12 +434,7 @@ export default function SchedulePage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-72 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading schedule…
-            </div>
-          ) : scheduledJobs.length === 0 ? (
+          {scheduledJobs.length === 0 ? (
             <div className="flex h-72 flex-col items-center justify-center px-6 text-center">
               <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-orange-600">
                 <CalendarDays className="size-6" />

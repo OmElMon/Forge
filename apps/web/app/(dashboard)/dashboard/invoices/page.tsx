@@ -256,7 +256,6 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
   const [lineItemsInvoiceId, setLineItemsInvoiceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
@@ -274,7 +273,6 @@ export default function InvoicesPage() {
   );
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [customersResponse, invoicesResponse] = await Promise.all([
@@ -297,8 +295,6 @@ export default function InvoicesPage() {
       setSelectedId((current) => current ?? loadedInvoices[0]?.id ?? null);
     } catch {
       setError("CrewPilot OS could not load invoices.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -626,12 +622,7 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex h-56 items-center justify-center text-gray-500">
-              <LoaderCircle className="mr-2 size-4 animate-spin" />
-              Loading invoices…
-            </div>
-          ) : customers.length === 0 ? (
+          {customers.length === 0 ? (
             <EmptyState icon={UserRound} title="Add a customer first" body="Estimates and invoices need to be attached to a customer record." />
           ) : filteredInvoices.length === 0 ? (
             <EmptyState icon={CircleDollarSign} title="No money records yet" body="Create an estimate or invoice to start tracking revenue." />
