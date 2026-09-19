@@ -81,3 +81,67 @@ export function clearSessionCookies(response: NextResponse) {
 export function invalidOrigin() {
   return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
 }
+
+export const DEFAULT_API_TIMEOUT_MS = 10000;
+export const IDEMPOTENT_MAX_RETRIES = 2;
+export const IDEMPOTENT_RETRY_DELAY_MS = 500;
+
+export async function fetchApiResponse(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_API_TIMEOUT_MS
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(apiUrl(path), {
+      ...options,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchApi<T>(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_API_TIMEOUT_MS,
+  retries = 0
+): Promise<{ ok: boolean; data: T | null; error: string | null; status: number }> {
+  try {
+    const response = await fetchApiResponse(path, options, timeoutMs);
+    const text = await response.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
+    }
+    if (!response.ok) {
+      let error = "The request could not be completed.";
+      if (data && typeof data === "object" && "detail" in data && typeof data.detail === "string") {
+        error = data.detail;
+      } else if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
+        error = data.error;
+      }
+      return { ok: false, data: null, error, status: response.status };
+    }
+    return { ok: true, data, error: null, status: response.status };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    const errorMessage = timedOut
+      ? "CrewPilot OS is still waking up the operations service. Wait a few seconds, then try again."
+      : "Unable to reach the operations service.";
+    const method = options.method?.toUpperCase() ?? "GET";
+    if (retries > 0 && (method === "GET" || method === "HEAD")) {
+      await new Promise((resolve) => setTimeout(resolve, IDEMPOTENT_RETRY_DELAY_MS));
+      return fetchApi<T>(path, options, timeoutMs, retries - 1);
+    }
+    return { ok: false, data: null, error: errorMessage, status: 503 };
+  }
+}

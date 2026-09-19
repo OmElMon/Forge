@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -11,6 +11,13 @@ function authHeaders(request: NextRequest) {
   };
 }
 
+type FollowupTask = {
+  id: string;
+  title: string;
+  status: "open" | "resolved";
+  due_at: string | null;
+};
+
 export async function GET(request: NextRequest) {
   const headers = authHeaders(request);
   if (!headers) {
@@ -20,16 +27,9 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status");
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
 
-  try {
-    const upstream = await fetch(apiUrl(`/followups${query}`), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the follow-up service." }, { status: 503 });
+  const result = await fetchApi<FollowupTask[]>(`/followups${query}`, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

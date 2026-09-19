@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -11,6 +17,20 @@ function authHeaders(request: NextRequest) {
   };
 }
 
+type Invoice = {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  document_type: "estimate" | "invoice";
+  status: "draft" | "sent" | "approved" | "converted" | "paid" | "void";
+  title: string;
+  amount_cents: number;
+  due_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function GET(request: NextRequest) {
   const headers = authHeaders(request);
   if (!headers) {
@@ -20,18 +40,11 @@ export async function GET(request: NextRequest) {
   const customerId = request.nextUrl.searchParams.get("customer_id");
   const path = customerId ? `/invoices?customer_id=${encodeURIComponent(customerId)}` : "/invoices";
 
-  try {
-    const upstream = await fetch(apiUrl(path), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invoice service." }, { status: 503 });
+  const result = await fetchApi<Invoice[]>(path, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }
 
 export async function POST(request: NextRequest) {
@@ -47,18 +60,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invoice title and customer are required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/invoices"), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json(), { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invoice service." }, { status: 503 });
+  const result = await fetchApi<Invoice>(
+    "/invoices",
+    { body: JSON.stringify(payload), headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data, { status: 201 });
 }

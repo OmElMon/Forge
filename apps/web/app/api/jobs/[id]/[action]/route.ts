@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 const allowedActions = new Set(["assign", "cancel", "complete", "schedule", "start"]);
 
@@ -15,6 +21,21 @@ function authHeaders(request: NextRequest) {
 
 type RouteContext = {
   params: Promise<{ action: string; id: string }>;
+};
+
+type Job = {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  technician_id: string | null;
+  title: string;
+  status: "new" | "scheduled" | "in_progress" | "completed" | "canceled";
+  scheduled_start: string | null;
+  amount_cents: number;
+  technician_name: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -35,18 +56,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Job action payload must be an object." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl(`/jobs/${id}/${action}`), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the jobs workflow service." }, { status: 503 });
+  const result = await fetchApi<Job>(
+    `/jobs/${id}/${action}`,
+    { body: JSON.stringify(payload), headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 const allowedActions = new Set(["approve", "convert-to-invoice", "mark-paid", "reopen", "send", "void"]);
 
@@ -15,6 +21,25 @@ function authHeaders(request: NextRequest) {
 
 type RouteContext = {
   params: Promise<{ action: string; id: string }>;
+};
+
+type Invoice = {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  document_type: "estimate" | "invoice";
+  status: "draft" | "sent" | "approved" | "converted" | "paid" | "void";
+  title: string;
+  amount_cents: number;
+  due_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ConvertResult = {
+  source_estimate: Invoice;
+  invoice: Invoice;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -33,18 +58,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const body = await request.json().catch(() => ({}));
   const payload = body && typeof body === "object" ? body : {};
 
-  try {
-    const upstream = await fetch(apiUrl(`/invoices/${id}/${action}`), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invoice workflow service." }, { status: 503 });
+  const result = await fetchApi<Invoice | ConvertResult>(
+    `/invoices/${id}/${action}`,
+    { body: JSON.stringify(payload), headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

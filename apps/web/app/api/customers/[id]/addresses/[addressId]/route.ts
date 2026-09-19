@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -13,6 +19,17 @@ function authHeaders(request: NextRequest) {
 
 type RouteContext = {
   params: Promise<{ id: string; addressId: string }>;
+};
+
+type ServiceAddress = {
+  id: string;
+  label: string;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  notes: string | null;
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
@@ -29,20 +46,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const { id, addressId } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/customers/${id}/addresses/${addressId}`), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "PATCH",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  const result = await fetchApi<ServiceAddress>(
+    `/customers/${id}/addresses/${addressId}`,
+    { body: JSON.stringify(payload), headers, method: "PATCH" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
@@ -54,17 +67,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const { id, addressId } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/customers/${id}/addresses/${addressId}`), {
-      cache: "no-store",
-      headers,
-      method: "DELETE",
-    });
-    if (upstream.status !== 204) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return new NextResponse(null, { status: 204 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  const result = await fetchApi<null>(
+    `/customers/${id}/addresses/${addressId}`,
+    { headers, method: "DELETE" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return new NextResponse(null, { status: 204 });
 }

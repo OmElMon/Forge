@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import { apiUrl, fetchApi, invalidOrigin, isSameOrigin } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -10,18 +10,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "A verification code is required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/email-verify/confirm"), {
-      body: JSON.stringify({ token: payload.token }),
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
+  const result = await fetchApi<null>(
+    "/auth/email-verify/confirm",
+    { body: JSON.stringify({ token: payload.token }), headers: { "Content-Type": "application/json" }, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi, invalidOrigin, isSameOrigin } from "@/lib/auth";
+
+type MfaEnrollResult = {
+  secret: string;
+  uri: string;
+  recovery_codes: string[];
+};
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -10,17 +16,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/mfa/enroll"), {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${accessToken}` },
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json(), { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
+  const result = await fetchApi<MfaEnrollResult>(
+    "/auth/mfa/enroll",
+    { headers: { Authorization: `Bearer ${accessToken}` }, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data, { status: 201 });
 }

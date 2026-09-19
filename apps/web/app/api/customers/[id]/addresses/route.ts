@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -15,6 +21,17 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+type ServiceAddress = {
+  id: string;
+  label: string;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  notes: string | null;
+};
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const headers = authHeaders(request);
   if (!headers) {
@@ -22,18 +39,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/customers/${id}/addresses`), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  const result = await fetchApi<ServiceAddress[]>(`/customers/${id}/addresses`, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -50,18 +60,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/customers/${id}/addresses`), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json(), { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  const result = await fetchApi<ServiceAddress>(
+    `/customers/${id}/addresses`,
+    { body: JSON.stringify(payload), headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data, { status: 201 });
 }

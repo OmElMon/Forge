@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiError,
+  fetchApiResponse,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -9,8 +15,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(apiUrl("/customers/import/template"), {
-      cache: "no-store",
+    const upstream = await fetchApiResponse("/customers/import/template", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!upstream.ok) {
@@ -23,8 +28,16 @@ export async function GET(request: NextRequest) {
         ...(contentDisposition ? { "Content-Disposition": contentDisposition } : {}),
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return NextResponse.json(
+      {
+        error: timedOut
+          ? "The customer service took too long to respond. Try again."
+          : "Unable to reach the customer service.",
+      },
+      { status: 503 }
+    );
   }
 }
 
@@ -42,9 +55,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(apiUrl("/customers/import"), {
+    const upstream = await fetchApiResponse("/customers/import", {
       body: form,
-      cache: "no-store",
       headers: { Authorization: `Bearer ${accessToken}` },
       method: "POST",
     });
@@ -52,7 +64,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
     }
     return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the customer service." }, { status: 503 });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return NextResponse.json(
+      {
+        error: timedOut
+          ? "The customer import took too long. Check the customer list before trying again."
+          : "Unable to reach the customer service.",
+      },
+      { status: 503 }
+    );
   }
 }

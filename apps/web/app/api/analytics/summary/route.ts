@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -11,22 +11,36 @@ function authHeaders(request: NextRequest) {
   };
 }
 
+type AnalyticsSummary = {
+  revenue: {
+    total_cents: number;
+    paid_cents: number;
+    open_invoice_cents: number;
+    open_estimate_cents: number;
+  };
+  jobs: {
+    total: number;
+    completed: number;
+    open: number;
+  };
+  customers: {
+    total: number;
+    active: number;
+  };
+  conversion: {
+    estimate_to_invoice_rate: number;
+  };
+};
+
 export async function GET(request: NextRequest) {
   const headers = authHeaders(request);
   if (!headers) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/analytics/summary"), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the analytics service." }, { status: 503 });
+  const result = await fetchApi<AnalyticsSummary>("/analytics/summary", { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

@@ -2,9 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import {
   REFRESH_COOKIE,
-  apiError,
-  apiUrl,
   clearSessionCookies,
+  fetchApi,
   invalidOrigin,
   isSameOrigin,
   setSessionCookies,
@@ -16,23 +15,27 @@ export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (!refreshToken) return NextResponse.json({ error: "No active session." }, { status: 401 });
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/refresh"), {
+  const result = await fetchApi<TokenPair>(
+    "/auth/refresh",
+    {
       body: JSON.stringify({ refresh_token: refreshToken }),
-      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       method: "POST",
-    });
-    if (!upstream.ok) {
-      const response = NextResponse.json({ error: await apiError(upstream) }, { status: 401 });
+    },
+    8000,
+    0
+  );
+  if (!result.ok || !result.data) {
+    const response = NextResponse.json(
+      { error: result.error ?? "Unable to refresh the session." },
+      { status: result.status }
+    );
+    if (result.status === 400 || result.status === 401 || result.status === 403) {
       clearSessionCookies(response);
-      return response;
     }
-    const response = NextResponse.json({ ok: true });
-    setSessionCookies(response, (await upstream.json()) as TokenPair);
     return response;
-  } catch {
-    return NextResponse.json({ error: "Unable to refresh the session." }, { status: 503 });
   }
+  const response = NextResponse.json({ ok: true });
+  setSessionCookies(response, result.data);
+  return response;
 }
-

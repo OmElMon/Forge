@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -15,6 +21,13 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+type FollowupTask = {
+  id: string;
+  title: string;
+  status: "open" | "resolved";
+  due_at: string | null;
+};
+
 export async function POST(request: NextRequest, context: RouteContext) {
   if (!isSameOrigin(request)) return invalidOrigin();
 
@@ -24,18 +37,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/followups/${id}/resolve`), {
-      body: "{}",
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the follow-up service." }, { status: 503 });
+  const result = await fetchApi<FollowupTask>(
+    `/followups/${id}/resolve`,
+    { body: "{}", headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

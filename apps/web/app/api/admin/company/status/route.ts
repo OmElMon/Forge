@@ -1,6 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi, invalidOrigin, isSameOrigin } from "@/lib/auth";
+
+type AdminCompany = {
+  id: string;
+  name: string;
+  status: string;
+  billing_status: string;
+  member_count: number;
+  invite_count: number;
+  audit_count: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export async function PATCH(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -15,21 +27,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "A workspace status is required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/admin/company/status"), {
-      body: JSON.stringify({ status: payload.status }),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      method: "PATCH",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to update workspace status." }, { status: 503 });
+  const result = await fetchApi<AdminCompany>(
+    "/admin/company/status",
+    { body: JSON.stringify({ status: payload.status }), headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, method: "PATCH" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

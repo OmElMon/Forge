@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -15,6 +21,21 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+type Job = {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  technician_id: string | null;
+  title: string;
+  status: "new" | "scheduled" | "in_progress" | "completed" | "canceled";
+  scheduled_start: string | null;
+  amount_cents: number;
+  technician_name: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const headers = authHeaders(request);
   if (!headers) {
@@ -22,18 +43,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/jobs/${id}`), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the jobs service." }, { status: 503 });
+  const result = await fetchApi<Job>(`/jobs/${id}`, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
@@ -50,18 +64,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/jobs/${id}`), {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers,
-      method: "PATCH",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the jobs service." }, { status: 503 });
+  const result = await fetchApi<Job>(
+    `/jobs/${id}`,
+    { body: JSON.stringify(payload), headers, method: "PATCH" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

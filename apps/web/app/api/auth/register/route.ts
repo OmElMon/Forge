@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { apiError, apiUrl, invalidOrigin, isSameOrigin, setSessionCookies, type TokenPair } from "@/lib/auth";
+import {
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+  setSessionCookies,
+  type TokenPair,
+} from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -16,21 +22,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "All registration fields are required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/register"), {
+  const result = await fetchApi<TokenPair>(
+    "/auth/register",
+    {
       body: JSON.stringify(payload),
-      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    const response = NextResponse.json({ ok: true }, { status: 201 });
-    setSessionCookies(response, (await upstream.json()) as TokenPair);
-    return response;
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
+    },
+    10000,
+    0
+  );
+  if (!result.ok || !result.data) {
+    return NextResponse.json(
+      { error: result.error ?? "The registration service returned an invalid response." },
+      { status: result.status }
+    );
   }
+  const response = NextResponse.json({ ok: true }, { status: 201 });
+  setSessionCookies(response, result.data);
+  return response;
 }
-

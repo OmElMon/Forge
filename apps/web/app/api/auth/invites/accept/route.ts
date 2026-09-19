@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { apiError, apiUrl, invalidOrigin, isSameOrigin, setSessionCookies, type TokenPair } from "@/lib/auth";
+import { apiUrl, fetchApi, invalidOrigin, isSameOrigin, setSessionCookies, type TokenPair } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -10,20 +10,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invite token and password are required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/invites/accept"), {
-      body: JSON.stringify({ token: payload.token, password: payload.password }),
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    const response = NextResponse.json({ ok: true });
-    setSessionCookies(response, (await upstream.json()) as TokenPair);
-    return response;
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
+  const result = await fetchApi<TokenPair>(
+    "/auth/invites/accept",
+    { body: JSON.stringify({ token: payload.token, password: payload.password }), headers: { "Content-Type": "application/json" }, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  const response = NextResponse.json({ ok: true });
+  setSessionCookies(response, result.data!);
+  return response;
 }

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -10,6 +10,15 @@ function authHeaders(request: NextRequest) {
     "Content-Type": "application/json",
   };
 }
+
+type AuditLog = {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  context: Record<string, unknown>;
+  created_at: string;
+};
 
 export async function GET(request: NextRequest) {
   const headers = authHeaders(request);
@@ -25,16 +34,9 @@ export async function GET(request: NextRequest) {
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
 
-  try {
-    const upstream = await fetch(apiUrl(`/audit-logs${query}`), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the audit service." }, { status: 503 });
+  const result = await fetchApi<AuditLog[]>(`/audit-logs${query}`, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

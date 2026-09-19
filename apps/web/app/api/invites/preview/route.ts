@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import { apiUrl, fetchApi, invalidOrigin, isSameOrigin } from "@/lib/auth";
+
+type InvitePreview = {
+  company_name: string;
+  role: string;
+  expires_at: string;
+};
 
 export async function GET(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
@@ -10,16 +16,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invite token is required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl(`/invites/preview?token=${encodeURIComponent(token)}`), {
-      cache: "no-store",
-      method: "GET",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invites service." }, { status: 503 });
+  const result = await fetchApi<InvitePreview>(`/invites/preview?token=${encodeURIComponent(token)}`, {}, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

@@ -1,11 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi, invalidOrigin, isSameOrigin } from "@/lib/auth";
 
 const allowedActions = new Set(["cancel", "resend"]);
 
 type RouteContext = {
   params: Promise<{ action: string; id: string }>;
+};
+
+type Invite = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -21,21 +31,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Unsupported invite action." }, { status: 404 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl(`/invites/${id}/${action}`), {
-      body: "{}",
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invites service." }, { status: 503 });
+  const result = await fetchApi<Invite>(
+    `/invites/${id}/${action}`,
+    { body: "{}", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -15,6 +21,16 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+type ConvertResult = {
+  customer: {
+    id: string;
+    name: string;
+  };
+  intake_record: {
+    id: string;
+  };
+};
+
 export async function POST(request: NextRequest, context: RouteContext) {
   if (!isSameOrigin(request)) return invalidOrigin();
 
@@ -24,18 +40,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  try {
-    const upstream = await fetch(apiUrl(`/intake/${id}/convert`), {
-      body: "{}",
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json(), { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the intake service." }, { status: 503 });
+  const result = await fetchApi<ConvertResult>(
+    `/intake/${id}/convert`,
+    { body: "{}", headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data, { status: 201 });
 }

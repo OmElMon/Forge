@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -10,6 +10,15 @@ function authHeaders(request: NextRequest) {
     "Content-Type": "application/json",
   };
 }
+
+type DispatchSuggestion = {
+  technician_id: string;
+  technician_name: string;
+  confidence: number;
+  matched_skills: string[];
+  missing_skills: string[];
+  workload: number;
+};
 
 export async function GET(request: NextRequest) {
   const headers = authHeaders(request);
@@ -25,16 +34,9 @@ export async function GET(request: NextRequest) {
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
 
-  try {
-    const upstream = await fetch(apiUrl(`/dispatch/suggestions${query}`), {
-      cache: "no-store",
-      headers,
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the dispatch service." }, { status: 503 });
+  const result = await fetchApi<DispatchSuggestion[]>(`/dispatch/suggestions${query}`, { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

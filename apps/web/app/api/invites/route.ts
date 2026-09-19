@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl, invalidOrigin, isSameOrigin } from "@/lib/auth";
+import {
+  ACCESS_COOKIE,
+  apiUrl,
+  fetchApi,
+  invalidOrigin,
+  isSameOrigin,
+} from "@/lib/auth";
 
 function authHeaders(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -11,6 +17,16 @@ function authHeaders(request: NextRequest) {
   };
 }
 
+type Invite = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+};
+
 export async function GET(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
 
@@ -19,19 +35,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/invites"), {
-      cache: "no-store",
-      headers,
-      method: "GET",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invites service." }, { status: 503 });
+  const result = await fetchApi<Invite[]>("/invites", { headers }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }
 
 export async function POST(request: NextRequest) {
@@ -47,22 +55,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email and full name are required." }, { status: 400 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/invites"), {
-      body: JSON.stringify({
-        email: payload.email,
-        full_name: payload.full_name,
-        role: payload.role ?? "office_staff",
-      }),
-      cache: "no-store",
-      headers,
-      method: "POST",
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json(), { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the invites service." }, { status: 503 });
+  const result = await fetchApi<Invite>(
+    "/invites",
+    { body: JSON.stringify({ email: payload.email, full_name: payload.full_name, role: payload.role ?? "office_staff" }), headers, method: "POST" },
+    10000,
+    0
+  );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data, { status: 201 });
 }

@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, apiError, apiUrl } from "@/lib/auth";
+import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
+
+type MfaStatus = {
+  enrolled: boolean;
+  confirmed: boolean;
+  pending: boolean;
+};
 
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -8,16 +14,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  try {
-    const upstream = await fetch(apiUrl("/auth/mfa"), {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!upstream.ok) {
-      return NextResponse.json({ error: await apiError(upstream) }, { status: upstream.status });
-    }
-    return NextResponse.json(await upstream.json());
-  } catch {
-    return NextResponse.json({ error: "Unable to reach the authentication service." }, { status: 503 });
+  const result = await fetchApi<MfaStatus>("/auth/mfa", { headers: { Authorization: `Bearer ${accessToken}` } }, 10000, 2);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  return NextResponse.json(result.data);
 }

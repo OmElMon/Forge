@@ -3,41 +3,46 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
-  apiUrl,
   clearSessionCookies,
+  fetchApi,
   setSessionCookies,
   type Principal,
   type TokenPair,
 } from "@/lib/auth";
 
 async function fetchPrincipal(accessToken: string) {
-  return fetch(apiUrl("/auth/me"), {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  return fetchApi<Principal>(
+    "/auth/me",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    8000,
+    0
+  );
 }
 
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   if (accessToken) {
-    const upstream = await fetchPrincipal(accessToken).catch(() => null);
-    if (upstream?.ok) return NextResponse.json((await upstream.json()) as Principal);
+    const upstream = await fetchPrincipal(accessToken);
+    if (upstream.ok && upstream.data) return NextResponse.json(upstream.data);
   }
 
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (refreshToken) {
-    const refresh = await fetch(apiUrl("/auth/refresh"), {
-      body: JSON.stringify({ refresh_token: refreshToken }),
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }).catch(() => null);
-    if (refresh?.ok) {
-      const tokens = (await refresh.json()) as TokenPair;
-      const principal = await fetchPrincipal(tokens.access_token).catch(() => null);
-      if (principal?.ok) {
-        const response = NextResponse.json((await principal.json()) as Principal);
-        setSessionCookies(response, tokens);
+    const refresh = await fetchApi<TokenPair>(
+      "/auth/refresh",
+      {
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+      8000,
+      0
+    );
+    if (refresh.ok && refresh.data) {
+      const principal = await fetchPrincipal(refresh.data.access_token);
+      if (principal.ok && principal.data) {
+        const response = NextResponse.json(principal.data);
+        setSessionCookies(response, refresh.data);
         return response;
       }
     }
@@ -47,4 +52,3 @@ export async function GET(request: NextRequest) {
   clearSessionCookies(response);
   return response;
 }
-

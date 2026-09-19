@@ -4,9 +4,10 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   type TokenPair,
-  apiUrl,
   clearSessionCookies,
+  fetchApi,
   setSessionCookies,
+  type Principal,
 } from "@/lib/auth";
 
 function buildCsp(nonce: string) {
@@ -41,26 +42,32 @@ function loginRedirect(request: NextRequest) {
 async function guarded(request: NextRequest, headers: Headers) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   if (accessToken) {
-    const me = await fetch(apiUrl("/auth/me"), {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => null);
-    if (me?.ok) return NextResponse.next({ request: { headers } });
+    const me = await fetchApi<Principal>(
+      "/auth/me",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      8000,
+      0
+    );
+    if (me.ok) return NextResponse.next({ request: { headers } });
   }
 
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (!refreshToken) return loginRedirect(request);
 
-  const refresh = await fetch(apiUrl("/auth/refresh"), {
-    body: JSON.stringify({ refresh_token: refreshToken }),
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  }).catch(() => null);
-  if (!refresh?.ok) return loginRedirect(request);
+  const refresh = await fetchApi<TokenPair>(
+    "/auth/refresh",
+    {
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+    8000,
+    0
+  );
+  if (!refresh.ok || !refresh.data) return loginRedirect(request);
 
   const response = NextResponse.next({ request: { headers } });
-  setSessionCookies(response, (await refresh.json()) as TokenPair);
+  setSessionCookies(response, refresh.data);
   return response;
 }
 
