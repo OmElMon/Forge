@@ -213,6 +213,60 @@ test("no rotation happens when the session is already valid", async () => {
   assert.equal(backend.sessionCalls, 0, "and must not need a renewal check");
 });
 
+test("a rejected rotation another tab already superseded does not sign the user out", async () => {
+  // Simulates a second tab that lost the rotation race: its refresh call is
+  // rejected, but the winner's cookies are already shared with it, so the
+  // follow-up session probe succeeds and there is no logout.
+  let sessionProbes = 0;
+  let refreshCalls = 0;
+  let dataCalls = 0;
+  let sessionLost = 0;
+  const client = createSessionClient({
+    fetch: async (input) => {
+      if (input === "/api/auth/refresh") {
+        refreshCalls += 1;
+        return json(401);
+      }
+      if (input === "/api/auth/session") {
+        sessionProbes += 1;
+        return json(sessionProbes === 1 ? 401 : 200);
+      }
+      dataCalls += 1;
+      return json(dataCalls === 1 ? 401 : 200);
+    },
+    onSessionLost: () => {
+      sessionLost += 1;
+    },
+  });
+
+  const response = await client.apiFetch("/api/customers");
+
+  assert.equal(response.status, 200, "the read recovers using the other tab's tokens");
+  assert.equal(sessionLost, 0, "a superseded rotation is not a logout");
+  assert.equal(refreshCalls, 1, "the rejected rotation is not retried");
+  assert.equal(sessionProbes, 2, "the probe is re-read after the rejected rotation");
+});
+
+test("a genuinely dead session is still reported after the confirming probe", async () => {
+  let sessionProbes = 0;
+  let sessionLost = 0;
+  const client = createSessionClient({
+    fetch: async (input) => {
+      if (input === "/api/auth/session") sessionProbes += 1;
+      return json(401);
+    },
+    onSessionLost: () => {
+      sessionLost += 1;
+    },
+  });
+
+  const response = await client.apiFetch("/api/customers");
+
+  assert.equal(response.status, 401);
+  assert.equal(sessionLost, 1);
+  assert.equal(sessionProbes, 2, "confirming probe runs before declaring the session lost");
+});
+
 test("non-401 failures pass straight through without renewal", async () => {
   for (const status of [400, 403, 404, 409, 422, 500, 503]) {
     const backend = new FakeBackend();

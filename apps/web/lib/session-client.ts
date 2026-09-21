@@ -89,7 +89,15 @@ export function createSessionClient(options: SessionClientOptions) {
       // second single-use token for no reason.
       const current = await readSession();
       if (current !== "rejected") return current;
-      return rotate();
+
+      const rotated = await rotate();
+      if (rotated !== "rejected") return rotated;
+
+      // The token was rejected, but another tab may have rotated it first — and
+      // cookies are shared between tabs, so the fresh tokens may already be in
+      // place. Re-read once before declaring the session lost; this is a probe,
+      // never another rotation.
+      return readSession();
     };
     return acquireLock ? acquireLock(run) : run();
   }
