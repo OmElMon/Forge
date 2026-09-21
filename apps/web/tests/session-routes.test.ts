@@ -103,7 +103,8 @@ class FakeBackend {
       if (authorization !== `Bearer ${this.access}`) {
         return json(401, { detail: "Could not validate credentials" });
       }
-      return json(200, { enrolled: false, confirmed: false, pending: false });
+      // Mirrors the API's MfaStatus schema (`apps/api/app/schemas/auth.py`).
+      return json(200, { configured: false, confirmed: false });
     }
 
     throw new Error(`unexpected backend call: ${url}`);
@@ -506,7 +507,11 @@ test("an expired-session MFA status read renews once and retries through the API
   const response = await client.apiFetch("/api/auth/mfa/status", { cache: "no-store" });
 
   assert.equal(response.status, 200, "the protected MFA read recovers after renewal");
-  assert.equal((await response.json()).confirmed, false);
+  assert.deepEqual(
+    await response.json(),
+    { configured: false, confirmed: false },
+    "the payload matches the API's MfaStatus contract exactly"
+  );
   assert.equal(backend.refreshCalls, 1, "exactly one rotation");
   assert.equal(jar.get(REFRESH), "refresh-2", "the rotation was stored");
   assert.equal(routeCalls.get("/api/auth/mfa/status"), 2, "original read + exactly one retry");
