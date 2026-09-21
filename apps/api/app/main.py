@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -126,3 +127,30 @@ async def security_headers_middleware(request: Request, call_next):
 @app.get("/", include_in_schema=False)
 async def root() -> dict[str, str]:
     return {"name": settings.app_name, "docs": "/docs"}
+
+
+# A paused Supabase project, a dropped pooler connection, or a database that is
+# still starting up all surface as connection/driver errors. Those are temporary
+# infrastructure conditions, not application bugs, so answer 503 (retryable) with
+# a sanitized message instead of an opaque 500. Never echo the driver error: it
+# can contain host, port, and user details.
+DATABASE_UNAVAILABLE_DETAIL = (
+    "The operations database is temporarily unavailable. Try again in a moment."
+)
+
+
+@app.exception_handler(DBAPIError)
+@app.exception_handler(ConnectionError)
+async def database_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.warning(
+        "database unavailable request_id=%s method=%s path=%s error=%s",
+        request_id_var.get(),
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": DATABASE_UNAVAILABLE_DETAIL},
+        headers={"Retry-After": "5"},
+    )
