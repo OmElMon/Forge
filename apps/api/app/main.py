@@ -8,7 +8,8 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, DisconnectionError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -129,19 +130,38 @@ async def root() -> dict[str, str]:
     return {"name": settings.app_name, "docs": "/docs"}
 
 
-# A paused Supabase project, a dropped pooler connection, or a database that is
-# still starting up all surface as connection/driver errors. Those are temporary
-# infrastructure conditions, not application bugs, so answer 503 (retryable) with
-# a sanitized message instead of an opaque 500. Never echo the driver error: it
-# can contain host, port, and user details.
+# --- Database availability -------------------------------------------------
+#
+# Only connection-level database failures are reported as a temporary outage.
+# Everything else stays a 500 on purpose: an IntegrityError, DataError,
+# ProgrammingError, or constraint violation is an application defect, and telling
+# a client "try again in a moment" would invite pointless retries of something
+# that will fail identically.
+#
+# `ConnectionRefusedError` is listed deliberately rather than its `ConnectionError`
+# parent: SQLAlchemy's asyncpg dialect lets the connect-time OSError escape
+# unwrapped, and in this API the only request-path socket to another service is
+# Postgres (Redis-backed rate limiting fails open, provider adapters are disabled
+# no-ops). Catching the broad `ConnectionError` would mislabel unrelated socket
+# failures as database downtime.
+DATABASE_CONNECTION_ERRORS: tuple[type[Exception], ...] = (
+    OperationalError,  # connect failures, pooler shutdown, server-side disconnects
+    InterfaceError,  # driver-level connection interface failures
+    DisconnectionError,  # connection invalidated underneath an open transaction
+    SQLAlchemyTimeoutError,  # pool checkout timeout
+    ConnectionRefusedError,  # asyncpg connect-time refusal (paused/unreachable database)
+)
+
 DATABASE_UNAVAILABLE_DETAIL = (
     "The operations database is temporarily unavailable. Try again in a moment."
 )
 
+DATABASE_UNAVAILABLE_RETRY_AFTER_SECONDS = 5
 
-@app.exception_handler(DBAPIError)
-@app.exception_handler(ConnectionError)
-async def database_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+
+def database_unavailable_response(request: Request, exc: Exception) -> JSONResponse:
+    # Log the exception class only. Driver messages can contain host, port, user,
+    # and SQL text, so none of the original error is echoed to the client.
     logger.warning(
         "database unavailable request_id=%s method=%s path=%s error=%s",
         request_id_var.get(),
@@ -152,5 +172,23 @@ async def database_unavailable_handler(request: Request, exc: Exception) -> JSON
     return JSONResponse(
         status_code=503,
         content={"detail": DATABASE_UNAVAILABLE_DETAIL},
-        headers={"Retry-After": "5"},
+        headers={"Retry-After": str(DATABASE_UNAVAILABLE_RETRY_AFTER_SECONDS)},
     )
+
+
+async def database_connection_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    return database_unavailable_response(request, exc)
+
+
+@app.exception_handler(DBAPIError)
+async def database_driver_error_handler(request: Request, exc: DBAPIError) -> JSONResponse:
+    # A generic driver error is only an outage when it invalidated the
+    # connection. IntegrityError, DataError and ProgrammingError also subclass
+    # DBAPIError, so anything else is re-raised and keeps its normal 500.
+    if not getattr(exc, "connection_invalidated", False):
+        raise exc
+    return database_unavailable_response(request, exc)
+
+
+for _connection_error in DATABASE_CONNECTION_ERRORS:
+    app.add_exception_handler(_connection_error, database_connection_error_handler)
