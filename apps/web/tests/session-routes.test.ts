@@ -11,6 +11,7 @@ import { afterEach, beforeEach, test } from "node:test";
 
 import { NextRequest } from "next/server";
 
+import { GET as mfaStatusRoute } from "../app/api/auth/mfa/status/route.ts";
 import { POST as refreshRoute } from "../app/api/auth/refresh/route.ts";
 import { DELETE as clearSessionRoute, GET as sessionRoute } from "../app/api/auth/session/route.ts";
 import { createSessionClient } from "../lib/session-client.ts";
@@ -95,6 +96,16 @@ class FakeBackend {
       });
     }
 
+    if (url.includes("/auth/mfa")) {
+      const authorization = new Headers(init?.headers as HeadersInit | undefined).get(
+        "authorization"
+      );
+      if (authorization !== `Bearer ${this.access}`) {
+        return json(401, { detail: "Could not validate credentials" });
+      }
+      return json(200, { enrolled: false, confirmed: false, pending: false });
+    }
+
     throw new Error(`unexpected backend call: ${url}`);
   };
 }
@@ -108,6 +119,7 @@ type RouteFetch = (
 /** Dispatch to the real route handlers, applying Set-Cookie to the shared jar. */
 function makeRouteFetch(jar: Jar, backend: FakeBackend) {
   const dataCalls = new Map<string, number>();
+  const routeCalls = new Map<string, number>();
 
   const routeFetch: RouteFetch = async (input, init, cookiesFrom = jar) => {
     const url = new URL(input, "http://localhost");
@@ -123,12 +135,17 @@ function makeRouteFetch(jar: Jar, backend: FakeBackend) {
     });
 
     let response: Response;
+    if (url.pathname.startsWith("/api/auth/")) {
+      routeCalls.set(url.pathname, (routeCalls.get(url.pathname) ?? 0) + 1);
+    }
     if (url.pathname === "/api/auth/session" && method === "GET") {
       response = await sessionRoute(request);
     } else if (url.pathname === "/api/auth/session" && method === "DELETE") {
       response = await clearSessionRoute(request);
     } else if (url.pathname === "/api/auth/refresh" && method === "POST") {
       response = await refreshRoute(request);
+    } else if (url.pathname === "/api/auth/mfa/status" && method === "GET") {
+      response = await mfaStatusRoute(request);
     } else {
       dataCalls.set(input, (dataCalls.get(input) ?? 0) + 1);
       response =
@@ -141,7 +158,7 @@ function makeRouteFetch(jar: Jar, backend: FakeBackend) {
     return response;
   };
 
-  return { routeFetch, dataCalls };
+  return { routeFetch, dataCalls, routeCalls };
 }
 
 let originalFetch: typeof globalThis.fetch;
@@ -462,4 +479,36 @@ test("mutations are never replayed while reads are retried at most once", async 
   });
   assert.equal(mutation.status, 401, "the caller still sees the failure");
   assert.equal(dataCalls.get("/api/customers"), 3, "the mutation is never replayed");
+});
+
+// --------------------------------------------------------------------------- //
+// Protected MFA routes participate in renewal (route level)
+// --------------------------------------------------------------------------- //
+
+test("an expired-session MFA status read renews once and retries through the API", async () => {
+  const backend = new FakeBackend();
+  globalThis.fetch = backend.fetch;
+
+  const jar: Jar = new Map([
+    [ACCESS, "expired"],
+    [REFRESH, "refresh-1"],
+  ]);
+  const { routeFetch, routeCalls } = makeRouteFetch(jar, backend);
+
+  let logouts = 0;
+  const client = createSessionClient({
+    fetch: (input, init) => routeFetch(input, init),
+    onSessionLost: () => {
+      logouts += 1;
+    },
+  });
+
+  const response = await client.apiFetch("/api/auth/mfa/status", { cache: "no-store" });
+
+  assert.equal(response.status, 200, "the protected MFA read recovers after renewal");
+  assert.equal((await response.json()).confirmed, false);
+  assert.equal(backend.refreshCalls, 1, "exactly one rotation");
+  assert.equal(jar.get(REFRESH), "refresh-2", "the rotation was stored");
+  assert.equal(routeCalls.get("/api/auth/mfa/status"), 2, "original read + exactly one retry");
+  assert.equal(logouts, 0);
 });

@@ -2,10 +2,11 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { ACCESS_COOKIE, apiUrl, fetchApi } from "@/lib/auth";
 
+// Mirrors the API's MfaStatus schema (`configured`/`confirmed`), which is what
+// the settings card reads.
 type MfaStatus = {
-  enrolled: boolean;
+  configured: boolean;
   confirmed: boolean;
-  pending: boolean;
 };
 
 export async function GET(request: NextRequest) {

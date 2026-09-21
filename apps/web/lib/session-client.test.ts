@@ -343,3 +343,154 @@ test("requests outside /api are left alone", async () => {
   assert.equal(response.status, 401);
   assert.equal(backend.refreshCalls, 0);
 });
+
+// --------------------------------------------------------------------------- //
+// Auth-path classification: protected MFA routes participate, public ones do not
+// --------------------------------------------------------------------------- //
+
+/**
+ * Backend where the access token is expired and only the listed paths answer
+ * 401 permanently (a wrong password, a bad one-time code), so a rotation must
+ * never be triggered by them.
+ */
+class AuthPathBackend {
+  accessValid = false;
+  refreshCalls = 0;
+  private calls = new Map<string, number>();
+  private readonly alwaysUnauthorized: string[];
+
+  constructor(alwaysUnauthorized: string[] = []) {
+    this.alwaysUnauthorized = alwaysUnauthorized;
+  }
+
+  fetch = async (input: string): Promise<Response> => {
+    this.calls.set(input, (this.calls.get(input) ?? 0) + 1);
+    // Checked first so a path can be declared permanently unauthorized even if
+    // it is one the backend otherwise treats specially.
+    if (this.alwaysUnauthorized.includes(input)) return json(401);
+    if (input === "/api/auth/session") return json(this.accessValid ? 200 : 401);
+    if (input === "/api/auth/refresh") {
+      this.refreshCalls += 1;
+      this.accessValid = true;
+      return json(200);
+    }
+    return json(this.accessValid ? 200 : 401);
+  };
+
+  count(path: string): number {
+    return this.calls.get(path) ?? 0;
+  }
+}
+
+function clientFor(backend: AuthPathBackend, onLost?: () => void) {
+  return createSessionClient({
+    fetch: (input) => backend.fetch(input),
+    onSessionLost: onLost,
+  });
+}
+
+const PROTECTED_MFA_MUTATIONS = [
+  "/api/auth/mfa/enroll",
+  "/api/auth/mfa/enroll/confirm",
+  "/api/auth/mfa/disable",
+];
+
+// Requirement: the four authenticated MFA routes opt in explicitly.
+test("an expired-session GET to /api/auth/mfa/status renews once and retries once", async () => {
+  const backend = new AuthPathBackend();
+  const client = clientFor(backend);
+
+  const response = await client.apiFetch("/api/auth/mfa/status", { cache: "no-store" });
+
+  assert.equal(response.status, 200, "the MFA status read recovers after renewal");
+  assert.equal(backend.refreshCalls, 1, "exactly one rotation");
+  assert.equal(backend.count("/api/auth/mfa/status"), 2, "original read + exactly one retry");
+});
+
+for (const path of PROTECTED_MFA_MUTATIONS) {
+  test(`${path} renews the session but is never replayed`, async () => {
+    const backend = new AuthPathBackend();
+    const client = clientFor(backend);
+
+    const response = await client.apiFetch(path, { method: "POST", body: JSON.stringify({ code: "123456" }) });
+
+    assert.equal(response.status, 401, "the caller still sees the failure");
+    assert.equal(backend.refreshCalls, 1, "the session is renewed for the next attempt");
+    assert.equal(backend.count(path), 1, "the mutation is sent exactly once, never replayed");
+  });
+}
+
+// Requirement: a rate-limited or failing renewal on a protected MFA route is not
+// a logout, whichever leg fails.
+for (const failure of [429, 503, "network"] as const) {
+  for (const failingLeg of ["session", "refresh"] as const) {
+    test(`a ${failure} on the ${failingLeg} leg of MFA renewal keeps the session`, async () => {
+      let logouts = 0;
+      const client = createSessionClient({
+        fetch: async (input) => {
+          if (input === "/api/auth/session") {
+            if (failingLeg === "session") return respond(failure);
+            return json(401); // probe rejected, so a rotation is attempted
+          }
+          if (input === "/api/auth/refresh") {
+            if (failingLeg === "refresh") return respond(failure);
+            return json(200);
+          }
+          return json(401); // the protected MFA route: expired access token
+        },
+        onSessionLost: () => {
+          logouts += 1;
+        },
+      });
+
+      const response = await client.apiFetch("/api/auth/mfa/status", { cache: "no-store" });
+
+      assert.equal(response.status, 401);
+      assert.equal(logouts, 0, `${failure} on ${failingLeg} must not sign the user out`);
+    });
+  }
+}
+
+function respond(failure: 429 | 503 | "network"): Response {
+  if (failure === "network") throw new TypeError("Failed to fetch");
+  return json(failure);
+}
+
+// Requirement: public and login-time auth endpoints stay excluded by default.
+const EXCLUDED_AUTH_PATHS = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/logout",
+  "/api/auth/refresh",
+  "/api/auth/mfa/verify",
+  "/api/auth/password-reset",
+  "/api/auth/password-reset/confirm",
+  "/api/auth/email-verify",
+  "/api/auth/email-verify/confirm",
+  "/api/auth/invites/accept",
+];
+
+for (const path of EXCLUDED_AUTH_PATHS) {
+  test(`${path} never triggers session renewal`, async () => {
+    const backend = new AuthPathBackend([path]);
+    const client = clientFor(backend);
+
+    const response = await client.apiFetch(path, { method: "POST", body: "{}" });
+
+    assert.equal(response.status, 401);
+    assert.equal(backend.refreshCalls, 0, `${path} must stay out of session renewal`);
+    assert.equal(backend.count(path), 1);
+  });
+}
+
+test("a wrong password and a rejected login MFA code are not expired sessions", async () => {
+  const backend = new AuthPathBackend(["/api/auth/login", "/api/auth/mfa/verify"]);
+  const client = clientFor(backend);
+
+  const login = await client.apiFetch("/api/auth/login", { method: "POST", body: "{}" });
+  const mfa = await client.apiFetch("/api/auth/mfa/verify", { method: "POST", body: "{}" });
+
+  assert.equal(login.status, 401);
+  assert.equal(mfa.status, 401);
+  assert.equal(backend.refreshCalls, 0, "sign-in failures must never rotate a session");
+});

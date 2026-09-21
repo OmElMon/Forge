@@ -79,16 +79,40 @@ function classify(response: Response): SessionStatus {
 }
 
 /**
- * Which requests may take part in session recovery. `/api/auth/*` is excluded:
- * a 401 from `POST /api/auth/login` means "wrong password", not "your session
- * expired", and treating it as the latter would burn a refresh rotation and
- * redirect the user mid-sign-in. The session probe itself is the one auth path
- * that does participate, because pages use it to load the signed-in principal.
+ * The only `/api/auth/*` endpoints that may take part in session recovery.
+ *
+ * This is an explicit allowlist, not a rule about the `/api/auth/` prefix: a
+ * route added later is excluded by default, which is the safe direction. Every
+ * other auth endpoint is public or login-time, where a 401 means "wrong
+ * credentials" or "bad one-time code" — never "your dashboard session expired" —
+ * so renewing there would burn a refresh rotation and bounce the user mid
+ * sign-in.
+ *
+ * The four MFA routes below are authenticated: they read the access cookie, so
+ * after the short-lived token expires they need the same renewal-then-retry
+ * treatment as any other protected read.
+ */
+const AUTHENTICATED_AUTH_PATHS = new Set([
+  SESSION_PATH, // GET    - principal probe
+  "/api/auth/mfa/status", // GET    - reads the access cookie
+  "/api/auth/mfa/enroll", // POST   - reads the access cookie
+  "/api/auth/mfa/enroll/confirm", // POST   - reads the access cookie
+  "/api/auth/mfa/disable", // POST   - reads the access cookie
+]);
+
+/**
+ * Which requests may take part in session recovery.
+ *
+ * Excluded on purpose: `/api/auth/login`, `/api/auth/register`,
+ * `/api/auth/password-reset`, `/api/auth/password-reset/confirm`,
+ * `/api/auth/email-verify`, `/api/auth/email-verify/confirm`,
+ * `/api/auth/invites/accept`, `/api/auth/logout`, `/api/auth/refresh`, and the
+ * login-time `/api/auth/mfa/verify` challenge.
  */
 function shouldCoordinate(path: string): boolean {
   if (!path.startsWith("/api/")) return false;
   if (!path.startsWith("/api/auth/")) return true;
-  return path === SESSION_PATH;
+  return AUTHENTICATED_AUTH_PATHS.has(path);
 }
 
 export function createSessionClient(options: SessionClientOptions) {
