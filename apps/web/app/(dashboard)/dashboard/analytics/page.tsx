@@ -12,6 +12,7 @@ import {
   TrendingUp,
   UsersRound,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type AnalyticsSummary = {
   paid_revenue_cents: number;
@@ -154,7 +155,7 @@ export default function AnalyticsPage() {
     async function loadSummary() {
       setError("");
       try {
-        const response = await fetch("/api/analytics/summary", { cache: "no-store" });
+        const response = await apiFetch("/api/analytics/summary", { cache: "no-store" });
         const payload = await readApiResponse(response);
         if (!response.ok) {
           setError(errorMessage(payload, "CrewPilot OS could not load analytics."));

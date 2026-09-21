@@ -17,6 +17,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type IntakeKind = "lead" | "call";
 type IntakeStatus = "new" | "contacted" | "closed" | "converted";
@@ -148,9 +149,9 @@ export default function IntakePage() {
     setError("");
     try {
       const [intakeResponse, customersResponse, techniciansResponse] = await Promise.all([
-        fetch("/api/intake", { cache: "no-store" }),
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/technicians", { cache: "no-store" }),
+        apiFetch("/api/intake", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/technicians", { cache: "no-store" }),
       ]);
       const intakePayloadData = await readApiResponse(intakeResponse);
       const customersPayload = await readApiResponse(customersResponse);
@@ -207,7 +208,7 @@ export default function IntakePage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/intake", {
+      const response = await apiFetch("/api/intake", {
         body: JSON.stringify(intakePayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -239,7 +240,7 @@ export default function IntakePage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/intake/${selectedRecord.id}`, {
+      const response = await apiFetch(`/api/intake/${selectedRecord.id}`, {
         body: JSON.stringify(intakePayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -268,7 +269,7 @@ export default function IntakePage() {
     setJobCreated(null);
 
     try {
-      const response = await fetch(`/api/intake/${record.id}/convert`, {
+      const response = await apiFetch(`/api/intake/${record.id}/convert`, {
         body: "{}",
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -307,7 +308,7 @@ export default function IntakePage() {
     const technicianId = form.get("technician_id");
 
     try {
-      const response = await fetch("/api/jobs", {
+      const response = await apiFetch("/api/jobs", {
         body: JSON.stringify({
           amount_cents: centsFromInput(form.get("amount")),
           customer_id: selectedRecord.customer_id,

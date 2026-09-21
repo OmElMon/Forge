@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import type { Principal } from "@/lib/auth";
+import { apiFetch } from "@/lib/session-client";
 
 type Customer = {
   id: string;
@@ -206,7 +207,7 @@ async function fetchDashboardApi<T>(path: string, fallback: T): Promise<Dashboar
   const timeout = window.setTimeout(() => controller.abort(), DASHBOARD_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       cache: "no-store",
       signal: controller.signal,
     });
@@ -303,7 +304,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/auth/session", { cache: "no-store" })
+    apiFetch("/api/auth/session", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then((session: Principal | null) => setPrincipal(session))
       .catch(() => setPrincipal(null));

@@ -13,6 +13,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type Customer = {
   id: string;
@@ -276,8 +277,8 @@ export default function InvoicesPage() {
     setError("");
     try {
       const [customersResponse, invoicesResponse] = await Promise.all([
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/invoices", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/invoices", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const invoicesPayload = await readApiResponse(invoicesResponse);
@@ -305,7 +306,7 @@ export default function InvoicesPage() {
   async function loadLineItems(invoiceId: string) {
     setLineItemsInvoiceId(invoiceId);
     try {
-      const response = await fetch(`/api/invoices/${invoiceId}/line-items`, { cache: "no-store" });
+      const response = await apiFetch(`/api/invoices/${invoiceId}/line-items`, { cache: "no-store" });
       const payload = await readApiResponse(response);
       if (!response.ok) {
         setError(errorMessage(payload, "Unable to load line items."));
@@ -364,7 +365,7 @@ export default function InvoicesPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/invoices", {
+      const response = await apiFetch("/api/invoices", {
         body: JSON.stringify(invoicePayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -396,7 +397,7 @@ export default function InvoicesPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice.id}`, {
+      const response = await apiFetch(`/api/invoices/${selectedInvoice.id}`, {
         body: JSON.stringify(invoicePayload(form, selectedInvoice.status)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -427,7 +428,7 @@ export default function InvoicesPage() {
           action.workflow === "reopen" && action.workflowStatus
             ? JSON.stringify({ status: action.workflowStatus })
             : "{}";
-        const response = await fetch(`/api/invoices/${invoice.id}/${action.workflow}`, {
+        const response = await apiFetch(`/api/invoices/${invoice.id}/${action.workflow}`, {
           body,
           headers: { "Content-Type": "application/json" },
           method: "POST",
@@ -461,7 +462,7 @@ export default function InvoicesPage() {
       }
 
       if (action.kind === "patch" && action.status) {
-        const response = await fetch(`/api/invoices/${invoice.id}`, {
+        const response = await apiFetch(`/api/invoices/${invoice.id}`, {
           body: JSON.stringify({ status: action.status }),
           headers: { "Content-Type": "application/json" },
           method: "PATCH",
@@ -506,7 +507,7 @@ export default function InvoicesPage() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items`, {
+      const response = await apiFetch(`/api/invoices/${selectedInvoice.id}/line-items`, {
         body: JSON.stringify(lineItemPayload(form, lineItems.length + 1)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -536,7 +537,7 @@ export default function InvoicesPage() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
+      const response = await apiFetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
         body: JSON.stringify(lineItemPayload(form, lineItem.sort_order)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -565,7 +566,7 @@ export default function InvoicesPage() {
     setLineUpdatingId(lineItem.id);
     setError("");
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
+      const response = await apiFetch(`/api/invoices/${selectedInvoice.id}/line-items/${lineItem.id}`, {
         method: "DELETE",
       });
       if (!response.ok) {

@@ -14,6 +14,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type Customer = {
   id: string;
@@ -178,7 +179,7 @@ export default function SchedulePage() {
     try {
       const results = await Promise.all(
         openJobs.map(async (job) => {
-          const response = await fetch(`/api/dispatch/suggestions?job_id=${job.id}&limit=1`, {
+          const response = await apiFetch(`/api/dispatch/suggestions?job_id=${job.id}&limit=1`, {
             cache: "no-store",
           });
           const payload = await readApiResponse(response);
@@ -198,9 +199,9 @@ export default function SchedulePage() {
     setError("");
     try {
       const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/jobs", { cache: "no-store" }),
-        fetch("/api/technicians", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/jobs", { cache: "no-store" }),
+        apiFetch("/api/technicians", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
@@ -248,7 +249,7 @@ export default function SchedulePage() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/jobs/${job.id}`, {
+      const response = await apiFetch(`/api/jobs/${job.id}`, {
         body: JSON.stringify({ status }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -276,7 +277,7 @@ export default function SchedulePage() {
 
     const customer = customerById.get(job.customer_id);
     try {
-      const response = await fetch("/api/invoices", {
+      const response = await apiFetch("/api/invoices", {
         body: JSON.stringify({
           amount_cents: job.amount_cents,
           customer_id: job.customer_id,
@@ -332,7 +333,7 @@ export default function SchedulePage() {
     if (!nextTechnicianStatus || nextTechnicianStatus === technician.status) return;
 
     try {
-      const response = await fetch(`/api/technicians/${technician.id}`, {
+      const response = await apiFetch(`/api/technicians/${technician.id}`, {
         body: JSON.stringify({ status: nextTechnicianStatus }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",

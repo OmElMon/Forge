@@ -14,6 +14,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type TechnicianStatus = "available" | "on_job" | "off_today";
 
@@ -182,9 +183,9 @@ export default function TechniciansPage() {
     setError("");
     try {
       const [techniciansResponse, customersResponse, jobsResponse] = await Promise.all([
-        fetch("/api/technicians", { cache: "no-store" }),
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/jobs", { cache: "no-store" }),
+        apiFetch("/api/technicians", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/jobs", { cache: "no-store" }),
       ]);
       const techniciansPayload = await readApiResponse(techniciansResponse);
       const customersPayload = await readApiResponse(customersResponse);
@@ -297,7 +298,7 @@ export default function TechniciansPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/technicians", {
+      const response = await apiFetch("/api/technicians", {
         body: JSON.stringify(technicianPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -326,7 +327,7 @@ export default function TechniciansPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/technicians/${selectedTechnician.id}`, {
+      const response = await apiFetch(`/api/technicians/${selectedTechnician.id}`, {
         body: JSON.stringify(technicianPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",

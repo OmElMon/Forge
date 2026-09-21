@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import { Ban, CheckCircle2, CircleDashed, Link2, LoaderCircle, MailX, Plus, RotateCcw, Search, Send, UserPlus, UsersRound } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type InviteStatus = "accepted" | "canceled" | "expired" | "pending";
 
@@ -88,8 +89,8 @@ export default function TeamPage() {
     setError("");
     try {
       const [invitesResponse, membersResponse] = await Promise.all([
-        fetch("/api/invites", { cache: "no-store" }),
-        fetch("/api/memberships", { cache: "no-store" }),
+        apiFetch("/api/invites", { cache: "no-store" }),
+        apiFetch("/api/memberships", { cache: "no-store" }),
       ]);
       const invitesPayload = await readApiResponse(invitesResponse);
       const membersPayload = await readApiResponse(membersResponse);
@@ -115,7 +116,7 @@ export default function TeamPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/invites", {
+      const response = await apiFetch("/api/invites", {
         body: JSON.stringify({
           email: form.get("email"),
           full_name: form.get("full_name"),
@@ -143,7 +144,7 @@ export default function TeamPage() {
     setBusyId(id);
     setError("");
     try {
-      const response = await fetch(`/api/invites/${id}/${action}`, {
+      const response = await apiFetch(`/api/invites/${id}/${action}`, {
         method: "POST",
       });
       const result = await readApiResponse(response);

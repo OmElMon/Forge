@@ -7,7 +7,7 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test lib/session-policy.test.ts",
+    "test": "node --experimental-strip-types --test lib/session-policy.test.ts lib/session-client.test.ts",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

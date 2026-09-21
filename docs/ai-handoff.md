@@ -107,11 +107,12 @@ Frontend:
 - Analytics page wired to the analytics summary API.
 - Follow-ups page: automation taskboard wired to the follow-up queue API — open/resolved filter, overdue/due-today signals, one-click resolve, and inline toggles for the policy registry (`/followups/rules`), so the automation layer is fully manageable from the dashboard.
 - Settings page with operational setup guidance.
+- Session renewal invariant: refresh sessions are rotating and single-use, so **only the browser's single-flight coordinator may rotate one** (`apps/web/lib/session-client.ts`). Dashboard pages call `apiFetch`, which renews at most once across all concurrent callers in a page, serializes across tabs with a Web Lock, retries reads once, and never replays a mutation. The middleware is a cookie-presence gate that makes no backend call, `/api/auth/session` is a read-only probe, and `/api/auth/refresh` is the single rotation path. Do not reintroduce server-side or per-request refresh — several concurrent requests rotating the same token would reject each other and sign the user out. A backend outage answers a retryable 503 without clearing cookies; only a definitive 400/401/403 ends a session.
 
 CI:
 
 - API job installs dev deps, runs Ruff, format check, pytest, and Alembic SQL generation.
-- Web job installs PNPM deps, runs typecheck, and production build.
+- Web job installs PNPM deps, runs the Node session/deployment unit tests (`pnpm test`), typecheck, and production build.
 
 ## API endpoints to know
 

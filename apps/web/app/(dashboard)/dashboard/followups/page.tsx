@@ -14,6 +14,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 async function readApiResponse(response: Response) {
   const text = await response.text();
@@ -117,10 +118,10 @@ export default function FollowupsPage() {
     setError("");
     try {
       const [tasksResponse, customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
-        fetch("/api/followups", { cache: "no-store" }),
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/jobs", { cache: "no-store" }),
-        fetch("/api/invoices", { cache: "no-store" }),
+        apiFetch("/api/followups", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/jobs", { cache: "no-store" }),
+        apiFetch("/api/invoices", { cache: "no-store" }),
       ]);
       const tasksPayload = await readApiResponse(tasksResponse);
       const customersPayload = await readApiResponse(customersResponse);
@@ -146,7 +147,7 @@ export default function FollowupsPage() {
   async function loadRules() {
     setRulesError("");
     try {
-      const response = await fetch("/api/followups/rules", { cache: "no-store" });
+      const response = await apiFetch("/api/followups/rules", { cache: "no-store" });
       const payload = await readApiResponse(response);
       if (!response.ok) {
         setRulesError(String((payload as { error?: unknown }).error ?? "Unable to load automation rules."));
@@ -188,7 +189,7 @@ export default function FollowupsPage() {
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/followups/${task.id}/resolve`, {
+      const response = await apiFetch(`/api/followups/${task.id}/resolve`, {
         body: "{}",
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -213,7 +214,7 @@ export default function FollowupsPage() {
     setRulesError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/followups/rules/${rule.rule_type}`, {
+      const response = await apiFetch(`/api/followups/rules/${rule.rule_type}`, {
         body: JSON.stringify({ enabled: !rule.enabled }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",

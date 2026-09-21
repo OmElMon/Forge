@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   ShieldOff,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type MfaStatus = {
   configured: boolean;
@@ -56,7 +57,7 @@ export function MfaSection() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/auth/mfa/status", { cache: "no-store" })
+    apiFetch("/api/auth/mfa/status", { cache: "no-store" })
       .then(async (response) => {
         const payload = await readApiResponse(response);
         if (!cancelled) {
@@ -81,7 +82,7 @@ export function MfaSection() {
     setEnrollConfirmed(false);
     setCodesSaved(false);
     try {
-      const response = await fetch("/api/auth/mfa/enroll", { method: "POST" });
+      const response = await apiFetch("/api/auth/mfa/enroll", { method: "POST" });
       const payload = await readApiResponse(response);
       if (response.status === 403) {
         setError("Only owners and admins can configure two-factor authentication.");
@@ -93,7 +94,7 @@ export function MfaSection() {
       }
       setEnroll(payload as EnrollResult);
       if (refreshStatus) {
-        const statusResponse = await fetch("/api/auth/mfa/status", { cache: "no-store" });
+        const statusResponse = await apiFetch("/api/auth/mfa/status", { cache: "no-store" });
         const statusPayload = await readApiResponse(statusResponse);
         if (statusResponse.ok) setStatus(statusPayload as MfaStatus);
       }
@@ -110,7 +111,7 @@ export function MfaSection() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/auth/mfa/enroll/confirm", {
+      const response = await apiFetch("/api/auth/mfa/enroll/confirm", {
         body: JSON.stringify({ code: form.get("code") }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -135,7 +136,7 @@ export function MfaSection() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/auth/mfa/disable", {
+      const response = await apiFetch("/api/auth/mfa/disable", {
         body: JSON.stringify({ code: form.get("code") }),
         headers: { "Content-Type": "application/json" },
         method: "POST",

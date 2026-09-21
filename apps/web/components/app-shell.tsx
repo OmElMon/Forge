@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import type { Principal } from "@/lib/auth";
+import { apiFetch } from "@/lib/session-client";
 
 const nav = [
   { label: "Overview", icon: Gauge, href: "/dashboard" },
@@ -43,14 +44,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    fetch("/api/auth/session", { cache: "no-store" })
+    apiFetch("/api/auth/session", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then((session: Principal | null) => setPrincipal(session))
       .catch(() => setPrincipal(null));
   }, []);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/api/auth/logout", { method: "POST" });
     window.location.assign("/login");
   }
 

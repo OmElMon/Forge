@@ -1,65 +1,39 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import {
-  ACCESS_COOKIE,
-  REFRESH_COOKIE,
-  clearSessionCookies,
-  fetchApi,
-  setSessionCookies,
-  type Principal,
-  type TokenPair,
-} from "@/lib/auth";
+import { ACCESS_COOKIE, fetchApi, type Principal } from "@/lib/auth";
 import { isUpstreamUnavailable, UPSTREAM_UNAVAILABLE_MESSAGE } from "@/lib/session-policy";
 
-async function fetchPrincipal(accessToken: string) {
-  return fetchApi<Principal>(
-    "/auth/me",
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-    8000,
-    0
-  );
-}
-
-// The API could not be reached (cold start, paused database, network blip) or
-// answered with a server error. That is not proof the session is invalid, so
-// keep the cookies and let the client retry instead of signing the user out.
-function upstreamUnavailable() {
-  return NextResponse.json({ error: UPSTREAM_UNAVAILABLE_MESSAGE }, { status: 503 });
-}
-
+/**
+ * Read-only session probe.
+ *
+ * This route intentionally does NOT rotate the refresh token and never clears
+ * cookies. Refresh sessions are single-use: if this endpoint (which every page
+ * and the app shell call on mount) renewed the session, concurrent mounts would
+ * rotate the same token several times over. Renewal belongs to the browser's
+ * single-flight coordinator in `lib/session-client.ts`, which calls
+ * `/api/auth/refresh` once; this route only reports what the access cookie can
+ * prove right now.
+ *
+ * - 200 principal      — the access token is valid.
+ * - 401 unauthenticated — ask the coordinator to renew and retry.
+ * - 503                — the backend is unreachable; the session is preserved.
+ */
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   if (accessToken) {
-    const upstream = await fetchPrincipal(accessToken);
-    if (upstream.ok && upstream.data) return NextResponse.json(upstream.data);
-    if (isUpstreamUnavailable(upstream.status)) return upstreamUnavailable();
-  }
-
-  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
-  if (refreshToken) {
-    const refresh = await fetchApi<TokenPair>(
-      "/auth/refresh",
-      {
-        body: JSON.stringify({ refresh_token: refreshToken }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      },
+    const upstream = await fetchApi<Principal>(
+      "/auth/me",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
       8000,
       0
     );
-    if (refresh.ok && refresh.data) {
-      const principal = await fetchPrincipal(refresh.data.access_token);
-      if (principal.ok && principal.data) {
-        const response = NextResponse.json(principal.data);
-        setSessionCookies(response, refresh.data);
-        return response;
-      }
-      if (isUpstreamUnavailable(principal.status)) return upstreamUnavailable();
+    if (upstream.ok && upstream.data) return NextResponse.json(upstream.data);
+    if (isUpstreamUnavailable(upstream.status)) {
+      return NextResponse.json({ error: UPSTREAM_UNAVAILABLE_MESSAGE }, { status: 503 });
     }
-    if (isUpstreamUnavailable(refresh.status)) return upstreamUnavailable();
   }
 
-  const response = NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  clearSessionCookies(response);
-  return response;
+  // An expired access cookie is an expected, recoverable state: the coordinator
+  // renews it. Cookies stay untouched so the renewal still has a refresh token.
+  return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 }

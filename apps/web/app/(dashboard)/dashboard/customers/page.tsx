@@ -19,6 +19,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type CustomerStatus = "lead" | "active" | "inactive";
 type PreferredContact = "" | "phone" | "email" | "sms";
@@ -276,10 +277,10 @@ export default function CustomersPage() {
     setError("");
     try {
       const [activityResponse, customersResponse, jobsResponse, invoicesResponse] = await Promise.all([
-        fetch("/api/audit-logs?limit=100", { cache: "no-store" }),
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/jobs", { cache: "no-store" }),
-        fetch("/api/invoices", { cache: "no-store" }),
+        apiFetch("/api/audit-logs?limit=100", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/jobs", { cache: "no-store" }),
+        apiFetch("/api/invoices", { cache: "no-store" }),
       ]);
       const activityPayload = await readApiResponse(activityResponse);
       const customersPayload = await readApiResponse(customersResponse);
@@ -319,7 +320,7 @@ export default function CustomersPage() {
     }
     setDetailLoading(true);
     try {
-      const response = await fetch(`/api/customers/${customerId}`, { cache: "no-store" });
+      const response = await apiFetch(`/api/customers/${customerId}`, { cache: "no-store" });
       const payload = await readApiResponse(response);
       if (!response.ok) {
         setError(errorMessage(payload, "Unable to load customer profile."));
@@ -359,7 +360,7 @@ export default function CustomersPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/customers", {
+      const response = await apiFetch("/api/customers", {
         body: JSON.stringify(customerPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -389,7 +390,7 @@ export default function CustomersPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/customers/${selectedCustomer.id}`, {
+      const response = await apiFetch(`/api/customers/${selectedCustomer.id}`, {
         body: JSON.stringify(customerPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -418,7 +419,7 @@ export default function CustomersPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/customers/${selectedCustomer.id}/addresses`, {
+      const response = await apiFetch(`/api/customers/${selectedCustomer.id}/addresses`, {
         body: JSON.stringify({
           address_line1: form.get("address_line1"),
           address_line2: form.get("address_line2") || null,
@@ -450,7 +451,7 @@ export default function CustomersPage() {
 
     setError("");
     try {
-      const response = await fetch(`/api/customers/${selectedCustomer.id}/addresses/${addressId}`, {
+      const response = await apiFetch(`/api/customers/${selectedCustomer.id}/addresses/${addressId}`, {
         method: "DELETE",
       });
       if (response.status !== 204) {
@@ -473,7 +474,7 @@ export default function CustomersPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/customers/${selectedCustomer.id}/equipment`, {
+      const response = await apiFetch(`/api/customers/${selectedCustomer.id}/equipment`, {
         body: JSON.stringify({
           installed_at: form.get("installed_at") || null,
           manufacturer: form.get("manufacturer") || null,
@@ -504,7 +505,7 @@ export default function CustomersPage() {
 
     setError("");
     try {
-      const response = await fetch(`/api/customers/${selectedCustomer.id}/equipment/${equipmentId}`, {
+      const response = await apiFetch(`/api/customers/${selectedCustomer.id}/equipment/${equipmentId}`, {
         method: "DELETE",
       });
       if (response.status !== 204) {
@@ -529,7 +530,7 @@ export default function CustomersPage() {
     body.append("file", importFile);
 
     try {
-      const response = await fetch("/api/customers/import", {
+      const response = await apiFetch("/api/customers/import", {
         body,
         method: "POST",
       });

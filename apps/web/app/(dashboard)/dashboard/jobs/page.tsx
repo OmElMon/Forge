@@ -14,6 +14,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type Customer = {
   id: string;
@@ -171,9 +172,9 @@ export default function JobsPage() {
     setError("");
     try {
       const [customersResponse, jobsResponse, techniciansResponse] = await Promise.all([
-        fetch("/api/customers", { cache: "no-store" }),
-        fetch("/api/jobs", { cache: "no-store" }),
-        fetch("/api/technicians", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/jobs", { cache: "no-store" }),
+        apiFetch("/api/technicians", { cache: "no-store" }),
       ]);
       const customersPayload = await readApiResponse(customersResponse);
       const jobsPayload = await readApiResponse(jobsResponse);
@@ -233,7 +234,7 @@ export default function JobsPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch("/api/jobs", {
+      const response = await apiFetch("/api/jobs", {
         body: JSON.stringify(jobPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -263,7 +264,7 @@ export default function JobsPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const response = await fetch(`/api/jobs/${selectedJob.id}`, {
+      const response = await apiFetch(`/api/jobs/${selectedJob.id}`, {
         body: JSON.stringify(jobPayload(form)),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -297,7 +298,7 @@ export default function JobsPage() {
         : {};
 
     try {
-      const response = await fetch(`/api/jobs/${job.id}/${action}`, {
+      const response = await apiFetch(`/api/jobs/${job.id}/${action}`, {
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -326,7 +327,7 @@ export default function JobsPage() {
 
     const customer = customerById.get(job.customer_id);
     try {
-      const response = await fetch("/api/invoices", {
+      const response = await apiFetch("/api/invoices", {
         body: JSON.stringify({
           amount_cents: job.amount_cents,
           customer_id: job.customer_id,
@@ -383,7 +384,7 @@ export default function JobsPage() {
     if (!nextTechnicianStatus || nextTechnicianStatus === technician.status) return;
 
     try {
-      const response = await fetch(`/api/technicians/${technician.id}`, {
+      const response = await apiFetch(`/api/technicians/${technician.id}`, {
         body: JSON.stringify({ status: nextTechnicianStatus }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",

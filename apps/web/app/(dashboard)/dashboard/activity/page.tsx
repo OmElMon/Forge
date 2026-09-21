@@ -11,6 +11,7 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { apiFetch } from "@/lib/session-client";
 
 type AuditLog = {
   id: string;
@@ -139,7 +140,7 @@ export default function ActivityPage() {
     async function loadLogs() {
       setError("");
       try {
-        const response = await fetch("/api/audit-logs?limit=200", { cache: "no-store" });
+        const response = await apiFetch("/api/audit-logs?limit=200", { cache: "no-store" });
         const payload = await readApiResponse(response);
         if (!response.ok) {
           setError(String((payload as { error?: unknown }).error ?? "Unable to load activity."));

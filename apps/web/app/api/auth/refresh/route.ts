@@ -9,7 +9,16 @@ import {
   setSessionCookies,
   type TokenPair,
 } from "@/lib/auth";
+import { isAuthRejection } from "@/lib/session-policy";
 
+/**
+ * The one endpoint that rotates a single-use refresh token.
+ *
+ * It is called only by the browser's single-flight session coordinator
+ * (`lib/session-client.ts`), which shares one in-flight renewal across all
+ * concurrent callers in a page and serializes across tabs with a Web Lock. Never
+ * call this from several independent server-side code paths.
+ */
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return invalidOrigin();
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
@@ -30,9 +39,9 @@ export async function POST(request: NextRequest) {
       { error: result.error ?? "Unable to refresh the session." },
       { status: result.status }
     );
-    if (result.status === 400 || result.status === 401 || result.status === 403) {
-      clearSessionCookies(response);
-    }
+    // Only a definitive rejection ends the session. A timeout or 5xx keeps the
+    // cookies so the user is not signed out by an infrastructure blip.
+    if (isAuthRejection(result.status)) clearSessionCookies(response);
     return response;
   }
   const response = NextResponse.json({ ok: true });

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { MfaSection } from "@/components/mfa-section";
+import { apiFetch } from "@/lib/session-client";
 
 type CompanyRead = {
   id: string;
@@ -113,7 +114,7 @@ export default function SettingsPage() {
     async function load() {
       setError("");
       try {
-        const profileResponse = await fetch("/api/companies/me", { cache: "no-store" });
+        const profileResponse = await apiFetch("/api/companies/me", { cache: "no-store" });
         const profilePayload = await readApiResponse(profileResponse);
         if (!profileResponse.ok) {
           setError(errorMessage(profilePayload, "Unable to load workspace settings."));
@@ -128,7 +129,7 @@ export default function SettingsPage() {
         setDefaultTrade(company.default_trade ?? "");
         setPrefs(company.notification_prefs);
 
-        const adminResponse = await fetch("/api/admin/company", { cache: "no-store" });
+        const adminResponse = await apiFetch("/api/admin/company", { cache: "no-store" });
         if (adminResponse.ok) {
           const adminPayload = await readApiResponse(adminResponse);
           if (!cancelled) setAdmin(adminPayload as AdminOverview);
@@ -149,7 +150,7 @@ export default function SettingsPage() {
     setError("");
     setSaved(false);
     try {
-      const response = await fetch("/api/companies/me", {
+      const response = await apiFetch("/api/companies/me", {
         body: JSON.stringify({
           name,
           timezone,
@@ -188,7 +189,7 @@ export default function SettingsPage() {
     setSuspending(true);
     setError("");
     try {
-      const response = await fetch("/api/admin/company/status", {
+      const response = await apiFetch("/api/admin/company/status", {
         body: JSON.stringify({ status: next }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
