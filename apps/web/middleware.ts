@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ACCESS_COOKIE, REFRESH_COOKIE, clearSessionCookies } from "@/lib/auth";
+import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 
 function buildCsp(nonce: string) {
   const upgradeInsecure = process.env.NODE_ENV === "production" ? "upgrade-insecure-requests; " : "";
@@ -20,13 +20,16 @@ function buildCsp(nonce: string) {
   ].join("; ");
 }
 
+// Session cookies are never deleted here. Clearing a dead session is an explicit
+// action (`DELETE /api/auth/session`) taken by the coordinator after its
+// confirming probe, so a redirect can never race a valid tab's fresh cookies.
+// This only fires when there is no session evidence at all, so there is nothing
+// to clear anyway.
 function loginRedirect(request: NextRequest) {
   const url = request.nextUrl.clone();
   url.pathname = "/login";
   url.searchParams.set("next", request.nextUrl.pathname);
-  const response = NextResponse.redirect(url);
-  clearSessionCookies(response);
-  return response;
+  return NextResponse.redirect(url);
 }
 
 // Auth guard for protected pages.

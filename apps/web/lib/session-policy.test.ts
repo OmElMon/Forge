@@ -3,9 +3,32 @@ import { test } from "node:test";
 
 import {
   isAuthRejection,
+  isRetryableStatus,
   isUpstreamUnavailable,
   UPSTREAM_UNAVAILABLE_MESSAGE,
 } from "./session-policy.ts";
+
+// A rate-limited user is still a signed-in user: 429 must never end a session.
+test("429 counts as retryable, alongside timeouts and 5xx", () => {
+  for (const status of [0, 429, 500, 502, 503, 504]) {
+    assert.equal(isRetryableStatus(status), true, `expected ${status} to be retryable`);
+  }
+});
+
+test("definitive answers and unexpected statuses are not retryable", () => {
+  for (const status of [200, 201, 400, 401, 403, 404, 409, 422]) {
+    assert.equal(isRetryableStatus(status), false, `expected ${status} not to be retryable`);
+  }
+});
+
+test("a retryable status is never also an auth rejection", () => {
+  for (let status = 0; status <= 599; status += 1) {
+    assert.ok(
+      !(isRetryableStatus(status) && isAuthRejection(status)),
+      `status ${status} must not be both retryable and an auth rejection`
+    );
+  }
+});
 
 // Regression: an unreachable or failing API (Render cold start, paused Supabase,
 // 5xx from the proxy) must never be mistaken for an authentication verdict.
