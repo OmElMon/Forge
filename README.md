@@ -1,81 +1,85 @@
 # CrewPilot OS
 
-CrewPilot OS is an AI-native operating system for home service businesses. The first market is HVAC, while the domain and tenant boundaries are designed for other field-service verticals.
+[![CI](https://github.com/OmElMon/Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/OmElMon/Forge/actions/workflows/ci.yml)
 
-It is being built as a realistic SaaS-style product: authenticated workspaces, tenant-scoped data, CRM records, jobs, scheduling, estimates, invoices, and revenue-aware dashboards.
+A field-service workspace for taking a customer from intake to a scheduled job and invoice. Built with Next.js, FastAPI, PostgreSQL, and Celery, CrewPilot OS brings CRM records, dispatch, billing, and operational follow-ups into one tenant-scoped product.
 
-## What is working now
+## What the implementation demonstrates
 
-- Workspace registration/login with JWT access tokens and rotating refresh sessions
-- Tenant-scoped customers, jobs, estimates, and invoices
-- Dashboard metrics backed by live customer/job/invoice data
-- Customer profiles with recent jobs and revenue summaries
-- Jobs and schedule views for dispatch-style operations
-- Estimates/invoices workflow, including estimate-to-invoice conversion and paid/open revenue tracking
-- Settings/operations page that documents the canonical deployment shape and sanity checks
-- PostgreSQL migrations through Alembic, with row-level security enabled on app tables
-- Render-ready API deployment and Netlify-compatible web configuration
+- Authenticated company workspaces with rotating refresh sessions, role checks, password reset, email verification, team invites, and MFA modules.
+- Customer profiles, service addresses, equipment records, jobs, estimates, invoice line items, and explicit invoice lifecycle actions.
+- Dispatch suggestions that rank technicians by required skills, availability, and overlapping jobs, returning reasons for each score.
+- Analytics, audit logs, intake conversion, domain events, automation policies, and follow-up tasks.
+- Alembic migrations and PostgreSQL row-level security, with API tests and frontend session tests in CI.
 
-## Tech stack
+## Architecture
 
-- `apps/api` — FastAPI, SQLAlchemy 2, PostgreSQL, Alembic, JWT auth, tenant-scoped models
-- `apps/web` — Next.js App Router, TypeScript, Tailwind CSS, responsive product shell
-- Infrastructure — PostgreSQL, Redis, Celery, Docker Compose, Render, Supabase Postgres
-- Architecture decisions and the delivery roadmap live in `docs/`
+```mermaid
+flowchart LR
+  Browser[Browser] --> Web[Next.js UI and API routes]
+  Web --> API[FastAPI /api/v1]
+  API --> DB[(PostgreSQL)]
+  API --> Redis[(Redis)]
+  Redis --> Worker[Celery worker and beat]
+  Worker --> DB
+  Worker --> Ports[Integration adapter ports]
+```
 
-## Start locally
+| Area | Implementation |
+| --- | --- |
+| Web | Next.js App Router, React, TypeScript, Tailwind CSS |
+| API | Python 3.12+, FastAPI, Pydantic, SQLAlchemy 2, Alembic |
+| Data and jobs | PostgreSQL 16, Redis 7, Celery |
+| Deployment configuration | Docker Compose, Render backend, Netlify frontend |
 
-1. Copy `.env.example` to `.env` and replace `SECRET_KEY`.
-2. Run `docker compose up --build`.
-3. Open the web app at http://localhost:3000 and API docs at http://localhost:8000/docs.
+## Run locally
 
-Apply migrations with:
+Install Docker with Docker Compose, then:
+
+```bash
+git clone https://github.com/OmElMon/Forge.git
+cd Forge
+cp .env.example .env
+# Edit .env and replace SECRET_KEY before starting.
+docker compose up --build
+```
+
+In another terminal, apply migrations and optionally seed the local demo workspace:
 
 ```bash
 docker compose exec api alembic upgrade head
-```
-
-## Demo data
-
-After the API is running and migrations are applied, seed a local demo workspace:
-
-```bash
 make demo-seed
 ```
 
-Demo login:
+Open the [web app](http://localhost:3000) and [API documentation](http://localhost:8000/docs). Demo account details are defined in `apps/api/app/scripts/seed_demo.py`. Reseeding replaces that demo company's business records. The seed script has a production environment guard.
 
-```text
-Email: demo@crewpilot.local
-Password: CrewPilotDemo2026
+## Validation
+
+```bash
+make api-test
+make api-lint
+cd apps/web
+pnpm install --frozen-lockfile
+pnpm test
+pnpm typecheck
+pnpm build
 ```
 
-The seed script creates a realistic workspace with customers, scheduled jobs, estimates, invoices, and paid/open revenue. It is idempotent for the demo company: rerunning it replaces the demo business records instead of duplicating them.
+CI also checks Python formatting, Alembic SQL generation, and a PostgreSQL-backed concurrency scenario. [CI run 35556626836](https://github.com/OmElMon/Forge/actions/runs/35556626836) completed successfully on September 21, 2026. These are recorded upstream results; this README update does not imply a new local test run.
 
-Safety note: the seed script refuses to run when `ENVIRONMENT=production` unless `CREWPILOT_ALLOW_PRODUCTION_SEED=true` is explicitly set.
+The repository's [core workflow verification](docs/core-workflow-verification.md) records the customer → scheduled job → paid invoice flow, reload and login persistence, negative cases, and the exact environment tested.
 
-## Deploy
+## Scope and current limits
 
-The current production shape uses:
+Dispatch recommendations use explicit scoring rules. Payment integrations currently register a disabled adapter; a hosted payment gateway should not be inferred from invoice status changes. The repository documents remaining provider setup and operational checks in [the handoff](docs/ai-handoff.md). Deployment configuration and local verification do not establish that a public production deployment or live provider integration is working.
 
-- Render for the FastAPI backend
-- Supabase Postgres for the database
-- Netlify-compatible frontend configuration via `netlify.toml`
+## Explore the project
 
-See `docs/deployment.md` for the Netlify settings and backend environment variables.
+- [Architecture](docs/architecture.md)
+- [Integration contracts](docs/integration-contracts.md)
+- [Security](docs/security.md)
+- [Deployment](docs/deployment.md)
+- [Operations](docs/operations.md)
+- [Roadmap](docs/roadmap.md)
 
-Render runs Alembic migrations on deploy through `apps/api/docker-entrypoint.sh`.
-
-See `docs/stability.md` for the current production assumptions, credit-control guidance, and deploy sanity checklist.
-
-## Workflow
-
-CrewPilot OS ships in small vertical slices. See `docs/workflows.md` for what should be handled manually, what Codex can automate, and how each feature should move from local changes to production validation.
-
-If another AI assistant or a future Codex session continues the project, start with `docs/ai-handoff.md`, then use `docs/onboarding-milestones.md` for the current onboarding ladder and next build order.
-
-## Next product slices
-
-- Invoice workflow actions (send/approve/convert/mark-paid/void/reopen) run through dedicated endpoints; `PATCH` now edits metadata only
-- Intake/lead flow, first-run onboarding checklist, password reset, and team invites are complete
-- Remaining work is founder-gated: messaging provider, Stripe, Sentry DSN, backup restore drill, uptime monitor, legal review (see `docs/ai-handoff.md`)
+No license file is currently included; no open-source license is asserted here.
