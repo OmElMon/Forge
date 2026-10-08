@@ -65,7 +65,7 @@ pnpm typecheck
 pnpm build
 ```
 
-CI also checks Python formatting, Alembic SQL generation, and a PostgreSQL-backed concurrency scenario. [CI run 35556626836](https://github.com/OmElMon/Forge/actions/runs/35556626836) completed successfully on September 21, 2026. These are recorded upstream results; this README update does not imply a new local test run.
+CI also checks Python formatting, Alembic SQL generation, and a PostgreSQL-backed concurrency scenario. [CI run 35556626836](https://github.com/OmElMon/Forge/actions/runs/35556626836) completed successfully on September 20, 2026 (11:11 p.m. EDT). These are recorded upstream results; this README update does not imply a new local test run.
 
 The repository's [core workflow verification](docs/core-workflow-verification.md) records the customer → scheduled job → paid invoice flow, reload and login persistence, negative cases, and the exact environment tested.
 
